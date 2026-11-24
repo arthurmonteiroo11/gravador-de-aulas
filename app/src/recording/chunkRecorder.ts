@@ -24,13 +24,20 @@ const defaultCreateRecorder = (stream: MediaStream, mimeType: string | undefined
  * Grava em partes independentes: cada parte é um MediaRecorder novo, para que
  * cada arquivo seja tocável e enviável sozinho. Pausas não contam no tempo.
  */
+type Segment = { recorder: MediaRecorder; startedAt: number; done: Promise<void>; requested: boolean };
+
+/**
+ * Grava em partes independentes: cada parte é um MediaRecorder novo, para que
+ * cada arquivo seja tocável e enviável sozinho. Pausas não contam no tempo.
+ * Se o sistema cortar ou silenciar o microfone, a parte é salva e a gravação pausa.
+ */
 export class ChunkRecorder {
   state: RecorderState = 'idle';
-  private recorder: MediaRecorder | null = null;
-  private segmentStartedAt = 0;
+  private segment: Segment | null = null;
   private accumulatedMs = 0;
   private nextIdx = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly watched = new WeakSet<MediaStreamTrack>();
   private readonly chunkMs: number;
   private readonly createRecorder: NonNullable<Options['createRecorder']>;
   private readonly mimeType = pickMimeType();
@@ -45,11 +52,11 @@ export class ChunkRecorder {
   }
 
   get recordedS(): number {
-    const running = this.state === 'recording' ? Date.now() - this.segmentStartedAt : 0;
+    const running = this.state === 'recording' && this.segment ? Date.now() - this.segment.startedAt : 0;
     return Math.round((this.accumulatedMs + running) / 1000);
   }
 
-  /** Quantas partes já foram fechadas (emitidas ou em emissão). */
+  /** Quantas partes com áudio já foram salvas. */
   get chunkCount(): number {
     return this.nextIdx;
   }
@@ -74,54 +81,72 @@ export class ChunkRecorder {
   }
 
   async stop(): Promise<void> {
-    const wasRecording = this.state === 'recording';
     this.state = 'stopped';
-    if (wasRecording) await this.finishSegment();
+    await this.finishSegment();
   }
 
   private startSegment(): void {
     this.watchTracks(this.stream);
-    this.recorder = this.createRecorder(this.stream, this.mimeType);
-    this.recorder.start();
-    this.segmentStartedAt = Date.now();
+    const recorder = this.createRecorder(this.stream, this.mimeType);
+    const startedAt = Date.now();
+    const parts: Blob[] = [];
+    let resolveDone: () => void = () => undefined;
+    const done = new Promise<void>((resolve) => (resolveDone = resolve));
+    const segment: Segment = { recorder, startedAt, done, requested: false };
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) parts.push(e.data);
+    };
+    // Ligado desde o início: pega também quando o sistema para o gravador sozinho.
+    recorder.onstop = () => {
+      this.closeSegment(segment, parts);
+      resolveDone();
+    };
+
+    this.segment = segment;
+    recorder.start();
     this.timer = setTimeout(() => void this.rotate(), this.chunkMs);
+  }
+
+  private closeSegment(segment: Segment, parts: Blob[]): void {
+    const elapsedMs = Date.now() - segment.startedAt;
+    const startS = this.accumulatedMs / 1000;
+    this.accumulatedMs += elapsedMs;
+    if (this.segment === segment) {
+      this.segment = null;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      // Parada que ninguém pediu (o sistema encerrou o gravador): vira pausa.
+      if (!segment.requested && this.state === 'recording') this.state = 'paused';
+    }
+    const blob = new Blob(parts, { type: parts[0]?.type || segment.recorder.mimeType || PREFERRED_MIME });
+    if (blob.size === 0) return;
+    this.onChunk({ idx: this.nextIdx++, blob, startS, durationS: elapsedMs / 1000 });
   }
 
   private async rotate(): Promise<void> {
     if (this.state !== 'recording') return;
     await this.finishSegment();
-    if (this.state === 'recording') this.startSegment();
+    if (this.state === 'recording' && !this.segment) this.startSegment();
   }
 
-  private finishSegment(): Promise<void> {
+  private async finishSegment(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    const recorder = this.recorder;
-    if (!recorder) return Promise.resolve();
-    this.recorder = null;
-
-    const elapsedMs = Date.now() - this.segmentStartedAt;
-    const startS = this.accumulatedMs / 1000;
-    this.accumulatedMs += elapsedMs;
-    const idx = this.nextIdx++;
-
-    return new Promise((resolve) => {
-      const parts: Blob[] = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) parts.push(e.data);
-      };
-      recorder.onstop = () => {
-        const type = parts[0]?.type || recorder.mimeType || PREFERRED_MIME;
-        this.onChunk({ idx, blob: new Blob(parts, { type }), startS, durationS: elapsedMs / 1000 });
-        resolve();
-      };
-      recorder.stop();
-    });
+    const segment = this.segment;
+    if (!segment) return;
+    segment.requested = true;
+    if (segment.recorder.state !== 'inactive') segment.recorder.stop();
+    await segment.done;
   }
 
   private watchTracks(stream: MediaStream): void {
     for (const track of stream.getAudioTracks()) {
-      track.addEventListener('ended', () => void this.pause(), { once: true });
+      if (this.watched.has(track)) continue;
+      this.watched.add(track);
+      const interrupt = () => void this.pause();
+      track.addEventListener('ended', interrupt);
+      track.addEventListener('mute', interrupt);
     }
   }
 }

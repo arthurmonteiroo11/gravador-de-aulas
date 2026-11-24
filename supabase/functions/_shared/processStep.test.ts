@@ -9,10 +9,13 @@ const chunk = (idx: number): AudioChunk => ({
 
 function fakeDeps(lesson: Partial<LessonRow>, chunkCount: number, transcribe: () => Promise<ModelSegment[]>) {
   const state = {
-    lesson: { id: 'l', status: 'processing', expected_chunks: chunkCount, processed_blocks: 0, total_blocks: null, block_failures: 0, ...lesson } as LessonRow & { error_message?: string },
+    lesson: { id: 'l', status: 'processing', expected_chunks: chunkCount, processed_blocks: 0, total_blocks: null, block_failures: 0, recorded_at: '2026-11-24T10:00:00Z', duration_s: 600, ...lesson } as LessonRow & { error_message?: string },
     segments: new Map<number, Segment[]>(),
     outputs: null as null | { rewrite: string; summary: string },
     rewriteCalls: 0,
+    leaseFree: true,
+    released: 0,
+    now: new Date('2026-11-24T10:30:00Z'),
   };
   const chunks = Array.from({ length: chunkCount }, (_, i) => chunk(i));
   const deps: StepDeps = {
@@ -26,6 +29,9 @@ function fakeDeps(lesson: Partial<LessonRow>, chunkCount: number, transcribe: ()
     transcribe,
     rewrite: () => { state.rewriteCalls++; return Promise.resolve({ rewrite: '# R', summary: '- S' }); },
     model: 'm',
+    acquireLease: () => Promise.resolve(state.leaseFree),
+    releaseLease: () => { state.released++; return Promise.resolve(); },
+    now: () => state.now,
   };
   return { deps, state };
 }
@@ -73,10 +79,36 @@ Deno.test('limite do Gemini deixa o bloco pendente sem contar falha', async () =
   assertEquals(state.lesson.block_failures, 0);
 });
 
-Deno.test(`erro repetido ${MAX_BLOCK_FAILURES} vezes vira erro`, async () => {
-  const { deps, state } = fakeDeps({ total_blocks: 1 }, 3, () => Promise.reject(new Error('quebrou')));
+Deno.test(`bloco que falha ${MAX_BLOCK_FAILURES} vezes é pulado e a aula segue`, async () => {
+  const { deps, state } = fakeDeps({ total_blocks: 2 }, 12, () => Promise.reject(new Error('quebrou')));
   for (let i = 0; i < MAX_BLOCK_FAILURES; i++) await processStep('l', deps);
-  assertEquals(state.lesson.status, 'error');
+  assertEquals(state.lesson.status, 'processing');
+  assertEquals(state.lesson.processed_blocks, 1);
+  assertEquals(state.segments.get(0), []);
+  assertEquals(state.lesson.error_message, 'Não foi possível transcrever o trecho 00:00–10:00.');
+});
+
+Deno.test('outra chamada em andamento: não faz nada', async () => {
+  let called = 0;
+  const { deps, state } = fakeDeps({ total_blocks: 1 }, 3, () => { called++; return ok(); });
+  state.leaseFree = false;
+  await processStep('l', deps);
+  assertEquals(called, 0);
+  assertEquals(state.lesson.processed_blocks, 0);
+});
+
+Deno.test('libera a vaga ao terminar, mesmo com erro', async () => {
+  const { deps, state } = fakeDeps({ total_blocks: 1 }, 3, () => Promise.reject(new Error('x')));
+  await processStep('l', deps);
+  assertEquals(state.released, 1);
+});
+
+Deno.test('envio parado há mais de 2 h segue com as partes que chegaram', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 10 }, 9, ok);
+  state.now = new Date('2026-11-24T12:11:00Z'); // gravação acabou 10:10
+  await processStep('l', deps);
+  assertEquals(state.lesson.status, 'processing');
+  assertEquals(state.lesson.total_blocks, 1);
 });
 
 Deno.test('com todos os blocos prontos, gera reescrita e resumo', async () => {

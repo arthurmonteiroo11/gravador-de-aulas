@@ -24,8 +24,9 @@ export type RecordDeps = {
   releaseVoiceStream: (s: MediaStream) => void;
   createLesson: (input: { title: string; subject?: string }) => Promise<{ id: string }>;
   finishRecording: (lessonId: string, durationS: number, chunkCount: number) => Promise<void>;
-  keepScreenOn: () => Promise<() => Promise<void>>;
+  keepScreenOn: (onUnavailable?: () => void) => Promise<() => Promise<void>>;
   createRecorder: (stream: MediaStream, onChunk: (c: RecordedChunk) => void) => RecorderLike;
+  saveChunk: (c: RecordedChunk & { lessonId: string }) => Promise<void>;
 };
 
 const realDeps: RecordDeps = {
@@ -35,6 +36,7 @@ const realDeps: RecordDeps = {
   finishRecording,
   keepScreenOn,
   createRecorder: (stream, onChunk) => new ChunkRecorder(stream, onChunk),
+  saveChunk: putChunk,
 };
 
 const micErrorMessage = (e: unknown) =>
@@ -51,6 +53,7 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<'form' | 'starting' | 'recording' | 'paused' | 'limit' | 'finishing'>('form');
   const [seconds, setSeconds] = useState(0);
+  const [screenWarning, setScreenWarning] = useState(false);
 
   const rec = useRef<RecorderLike | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -96,10 +99,14 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
       const lesson = await deps.createLesson({ title: title.trim(), subject: subject.trim() || undefined });
       lessonId.current = lesson.id;
       const id = lesson.id;
-      const r = deps.createRecorder(stream.current, (c) => void putChunk({ lessonId: id, ...c }));
+      const r = deps.createRecorder(stream.current, (c) => {
+        deps.saveChunk({ lessonId: id, ...c }).catch(() =>
+          setError('Não consegui salvar parte da gravação no aparelho. Libere espaço no iPhone e continue.'),
+        );
+      });
       rec.current = r;
       r.start();
-      cleanups.current.push(await deps.keepScreenOn(), watchLifecycle(r));
+      cleanups.current.push(await deps.keepScreenOn(() => setScreenWarning(true)), watchLifecycle(r));
       setPhase('recording');
     } catch {
       releaseStream();
@@ -167,6 +174,11 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
     <section>
       <p className="clock" aria-live="off">{formatClock(seconds)}</p>
       <p className="notice">Não bloqueie a tela nem troque de app. Se acontecer, a gravação pausa.</p>
+      {screenWarning && (
+        <p className="notice">
+          Este iPhone não deixou o app manter a tela acesa. Em Ajustes &gt; Tela e Brilho &gt; Bloqueio Automático, escolha Nunca durante a aula.
+        </p>
+      )}
       {phase === 'paused' && <p className="notice">Gravação pausada — toque em Continuar para seguir na mesma aula.</p>}
       {phase === 'limit' && (
         <div className="notice" role="alertdialog">

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lesson } from '../lib/types';
 import { listLessons, requestProcessing } from '../lessons/api';
 import { finalizeAbandoned } from '../lessons/recovery';
 import { formatDuration, statusLabel } from '../lessons/format';
+import { startPoller } from '../lessons/poller';
+import { retryLesson } from '../lessons/retry';
 
 type Props = { onRecord: () => void; onOpen: (id: string) => void };
 
@@ -21,11 +23,14 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
     }
   }, []);
 
-  // Enquanto o app está aberto, empurra o processamento das aulas pendentes.
+  const lessonsRef = useRef<Lesson[] | null>(null);
+  lessonsRef.current = lessons;
+
+  // Enquanto o app está aberto, empurra o processamento das aulas pendentes, uma rodada por vez.
   useEffect(() => {
     void refresh();
-    const timer = setInterval(async () => {
-      const pending = (lessons ?? []).filter((l) => l.status === 'uploading' || l.status === 'processing');
+    return startPoller(async () => {
+      const pending = (lessonsRef.current ?? []).filter((l) => l.status === 'uploading' || l.status === 'processing');
       for (const l of pending) {
         try {
           await requestProcessing(l.id);
@@ -33,14 +38,17 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
           /* tenta de novo no próximo ciclo */
         }
       }
-      if (pending.length) void refresh();
+      if (pending.length) await refresh();
     }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [lessons, refresh]);
+  }, [refresh]);
 
   const finalize = async (id: string) => {
-    await finalizeAbandoned(id);
-    void refresh();
+    try {
+      await finalizeAbandoned(id);
+      void refresh();
+    } catch {
+      setError('Não foi possível finalizar. Verifique a internet e tente de novo.');
+    }
   };
 
   return (
@@ -60,6 +68,11 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
                   .join(' · ')}
               </span>
             </button>
+            {l.status === 'error' && (
+              <button onClick={() => void retryLesson(l).then(refresh).catch(() => setError('Não foi possível tentar de novo.'))}>
+                Tentar de novo
+              </button>
+            )}
             {l.status === 'recording' && (
               <button onClick={() => finalize(l.id)}>Finalizar gravação interrompida</button>
             )}

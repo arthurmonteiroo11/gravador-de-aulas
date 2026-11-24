@@ -23,14 +23,16 @@ export function toAbsoluteSegments(block: AudioChunk[], segs: ModelSegment[]): S
   return out.sort((a, b) => a.start_s - b.start_s);
 }
 
+/** Tempo como no app: mm:ss, ou h:mm:ss a partir de 1 hora. */
+export function clock(t: number): string {
+  const s = Math.max(0, Math.floor(t));
+  const h = Math.floor(s / 3600);
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${m}:${sec}` : `${m}:${sec}`;
+}
+
 /** Texto corrido com marcação de tempo, usado para a reescrita. */
 export function transcriptText(segments: Segment[]): string {
-  const mmss = (t: number) => {
-    const s = Math.floor(t);
-    const h = Math.floor(s / 3600);
-    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-    const sec = String(s % 60).padStart(2, '0');
-    return h ? `${h}:${m}:${sec}` : `${m}:${sec}`;
-  };
-  return segments.map((s) => `[${mmss(s.start_s)}] ${s.text}`).join('\n');
+  return segments.map((s) => `[${clock(s.start_s)}] ${s.text}`).join('\n');
 }

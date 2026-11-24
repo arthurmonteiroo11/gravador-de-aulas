@@ -85,6 +85,8 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
         </p>
       )}
 
+      {lesson.status === 'ready' && lesson.error_message && <p className="notice">{lesson.error_message}</p>}
+
       <nav className="tabs" role="tablist">
         {TABS.map(([key, label]) => (
           <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'primary' : ''} onClick={() => setTab(key)}>

@@ -18,6 +18,14 @@ export async function getVoiceStream(opts: { voiceFilter: boolean }): Promise<Me
   }
 
   const ctx = new Ctx();
+  // O iOS pode criar o contexto suspenso; sem tocar, a gravação sairia muda.
+  await ctx.resume?.().catch(() => undefined);
+  if (ctx.state && ctx.state !== 'running') {
+    void ctx.close?.();
+    cleanups.set(mic, () => mic.getTracks().forEach((t) => t.stop()));
+    return mic;
+  }
+
   const source = ctx.createMediaStreamSource(mic);
   const filter = ctx.createBiquadFilter();
   filter.type = 'highpass';
@@ -27,13 +35,19 @@ export async function getVoiceStream(opts: { voiceFilter: boolean }): Promise<Me
   filter.connect(dest);
   const out = dest.stream;
 
-  // Se o sistema cortar o microfone (ligação, Siri), avisa pela trilha filtrada também.
+  // Ligação, Siri ou outro app usando o áudio: avisa pela trilha filtrada para o gravador pausar.
+  const signal = (type: 'ended' | 'mute') => {
+    for (const t of out.getAudioTracks()) t.dispatchEvent(new Event(type));
+  };
   for (const micTrack of mic.getAudioTracks()) {
-    micTrack.addEventListener('ended', () => {
-      for (const t of out.getAudioTracks()) t.dispatchEvent(new Event('ended'));
-    });
+    micTrack.addEventListener('ended', () => signal('ended'));
+    micTrack.addEventListener('mute', () => signal('mute'));
   }
+  ctx.onstatechange = () => {
+    if (ctx.state !== 'running' && ctx.state !== 'closed') signal('mute');
+  };
   cleanups.set(out, () => {
+    ctx.onstatechange = null;
     mic.getTracks().forEach((t) => t.stop());
     void ctx.close?.();
   });

@@ -21,6 +21,7 @@ const makeDeps = (over: Partial<RecordDeps> = {}) => {
     finishRecording: vi.fn().mockResolvedValue(undefined),
     keepScreenOn: vi.fn().mockResolvedValue(async () => undefined),
     createRecorder: vi.fn().mockReturnValue(rec),
+    saveChunk: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
   return { deps, rec };
@@ -77,5 +78,29 @@ describe('RecordScreen', () => {
     expect(rec.stop).toHaveBeenCalled();
     expect(deps.finishRecording).toHaveBeenCalledWith('l1', 75, 2);
     expect(onDone).toHaveBeenCalledWith('l1');
+  });
+});
+
+describe('RecordScreen — avisos', () => {
+  it('mostra como evitar o bloqueio quando a tela não pode ficar acesa', async () => {
+    const { deps } = makeDeps({
+      keepScreenOn: vi.fn(async (onUnavailable?: () => void) => { onUnavailable?.(); return async () => undefined; }),
+    });
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    expect(screen.getByText(/Bloqueio Automático, escolha Nunca/)).toBeInTheDocument();
+  });
+
+  it('avisa se uma parte não puder ser salva no aparelho', async () => {
+    let emit: (c: unknown) => void = () => undefined;
+    const rec = fakeRecorder();
+    const { deps } = makeDeps({
+      createRecorder: vi.fn((_s, onChunk) => { emit = onChunk as never; return rec; }),
+      saveChunk: vi.fn().mockRejectedValue(new Error('QuotaExceeded')),
+    });
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    await act(async () => { emit({ idx: 0, blob: new Blob(['a']), startS: 0, durationS: 60 }); });
+    expect(screen.getByText(/Não consegui salvar parte da gravação/)).toBeInTheDocument();
   });
 });

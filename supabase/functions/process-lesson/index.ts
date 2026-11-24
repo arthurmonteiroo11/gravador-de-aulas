@@ -40,12 +40,8 @@ function depsFor(lessonId: string): StepDeps {
       if (error) throw error;
       return new Uint8Array(await data.arrayBuffer());
     },
-    replaceSegments: async (blockIdx, segs) => {
-      must(await db.from('transcript_segments').delete().eq('lesson_id', lessonId).eq('block_idx', blockIdx));
-      if (segs.length) {
-        must(await db.from('transcript_segments').insert(segs.map((s) => ({ ...s, lesson_id: lessonId, block_idx: blockIdx }))));
-      }
-    },
+    replaceSegments: async (blockIdx, segs) =>
+      void must(await db.rpc('replace_block_segments', { p_lesson: lessonId, p_block: blockIdx, p_segments: segs })),
     listSegments: async () =>
       must(await db.from('transcript_segments').select('start_s, end_s, text, speaker').eq('lesson_id', lessonId).order('start_s')) ?? [],
     saveOutputs: async ({ rewrite, summary }) =>
@@ -56,6 +52,9 @@ function depsFor(lessonId: string): StepDeps {
     transcribe: (parts) => transcribeBlock(parts),
     rewrite: (t) => rewriteAndSummarize(t),
     model: GEMINI_MODEL,
+    acquireLease: async () => Boolean(must(await db.rpc('try_lease', { p_lesson: lessonId }))),
+    releaseLease: async () => void must(await db.rpc('release_lease', { p_lesson: lessonId })),
+    now: () => new Date(),
   };
 }
 

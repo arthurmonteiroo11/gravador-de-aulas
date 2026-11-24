@@ -1,9 +1,15 @@
 type Sentinel = { release: () => Promise<void> };
 
-/** Mantém a tela acesa enquanto grava. Reaplica ao voltar para a página. */
-export async function keepScreenOn(): Promise<() => Promise<void>> {
+/**
+ * Mantém a tela acesa enquanto grava. Reaplica ao voltar para a página.
+ * `onUnavailable` é chamado quando o aparelho recusa (ex.: iOS antigo no app da tela inicial).
+ */
+export async function keepScreenOn(onUnavailable?: () => void): Promise<() => Promise<void>> {
   const wakeLock = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<Sentinel> } }).wakeLock;
-  if (!wakeLock) return async () => undefined;
+  if (!wakeLock) {
+    onUnavailable?.();
+    return async () => undefined;
+  }
 
   let sentinel: Sentinel | null = null;
   const acquire = async () => {
@@ -11,6 +17,7 @@ export async function keepScreenOn(): Promise<() => Promise<void>> {
       sentinel = await wakeLock.request('screen');
     } catch {
       sentinel = null;
+      onUnavailable?.();
     }
   };
   const onVisible = () => {

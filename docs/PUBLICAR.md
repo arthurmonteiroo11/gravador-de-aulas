@@ -5,7 +5,7 @@ Siga na ordem. Nenhuma chave vai para o GitHub: este repositório é público.
 ## 1. Banco de dados (Supabase)
 
 1. Dê merge da branch `v1` na `main`. A integração do Supabase com o GitHub aplica as migrações de `supabase/migrations/`.
-   - Se a integração não aplicar, rode no SQL Editor os três arquivos de `supabase/migrations/`, em ordem.
+   - Se a integração não aplicar, rode no SQL Editor os quatro arquivos de `supabase/migrations/`, em ordem.
 2. **Authentication → Sign In / Providers → Email:** desligue "Allow new users to sign up".
 3. **Authentication → Users → Invite user:** convide o seu e-mail.
 4. **Authentication → URL Configuration:** em *Site URL* e *Redirect URLs*, coloque o endereço da Vercel (passo 3).
@@ -41,9 +41,11 @@ Siga na ordem. Nenhuma chave vai para o GitHub: este repositório é público.
 
 Anote o que deu certo e o que não deu.
 
+- [ ] Se aparecer o aviso de tela acesa, ajuste Ajustes > Tela e Brilho > Bloqueio Automático para Nunca durante a aula.
 - [ ] Gravar 5 min com a tela acesa. A transcrição sai contínua, com tempos certos.
 - [ ] Bloquear a tela no minuto 2, voltar e tocar em **Continuar**: segue na mesma aula, nada anterior perdido.
 - [ ] Trocar de app e voltar: o mesmo.
+- [ ] Receber uma ligação (ou chamar a Siri) no meio: a gravação pausa e continua com um toque.
 - [ ] Ativar o modo avião no meio: as partes sobem quando a internet volta.
 - [ ] Fechar o app durante o "Transcrevendo": a aula fica pronta sozinha (pode levar alguns minutos).
 - [ ] Filtro de voz ligado e desligado: os dois gravam.

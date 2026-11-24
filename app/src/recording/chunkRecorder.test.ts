@@ -95,3 +95,73 @@ describe('recorderOptions', () => {
     expect(recorderOptions(undefined)).toEqual({ audioBitsPerSecond: 48_000 });
   });
 });
+
+describe('ChunkRecorder — interrupções do sistema', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeMediaRecorder.instances = [];
+    FakeMediaRecorder.nextData = 'x';
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('gravador que para sozinho salva a parte e pausa, sem travar', async () => {
+    const track = new FakeTrack();
+    const { rec, chunks } = make(fakeStream(track));
+    rec.start();
+    await vi.advanceTimersByTimeAsync(20_000);
+    FakeMediaRecorder.instances[0].selfStop();
+    await vi.advanceTimersByTimeAsync(0);
+    track.end();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toMatchObject({ idx: 0, durationS: 20 });
+    expect(rec.state).toBe('paused');
+    expect(rec.chunkCount).toBe(1);
+    await rec.stop(); // não pode travar
+    expect(rec.state).toBe('stopped');
+  });
+
+  it('microfone silenciado pelo iOS (mute) pausa e salva a parte', async () => {
+    const track = new FakeTrack();
+    const { rec, chunks } = make(fakeStream(track));
+    rec.start();
+    await vi.advanceTimersByTimeAsync(15_000);
+    track.mute();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rec.state).toBe('paused');
+    expect(chunks[0]).toMatchObject({ idx: 0, durationS: 15 });
+  });
+
+  it('parte vazia não é emitida nem contada', async () => {
+    const { rec, chunks } = make();
+    rec.start();
+    FakeMediaRecorder.nextData = '';
+    await rec.pause();
+    expect(chunks).toHaveLength(0);
+    expect(rec.chunkCount).toBe(0);
+    FakeMediaRecorder.nextData = 'x';
+    rec.resume(fakeStream());
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(chunks[0]).toMatchObject({ idx: 0 });
+  });
+});
+
+describe('ChunkRecorder — pausa durante a troca de parte', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeMediaRecorder.instances = [];
+    FakeMediaRecorder.nextData = 'x';
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('pausa pedida no meio da troca continua pausada', async () => {
+    const { rec } = make();
+    rec.start();
+    await vi.advanceTimersByTimeAsync(59_999);
+    vi.advanceTimersByTime(1); // dispara a troca sem esperar
+    await rec.pause();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rec.state).toBe('paused');
+    expect(FakeMediaRecorder.instances.filter((r) => r.state === 'recording')).toHaveLength(0);
+  });
+});
