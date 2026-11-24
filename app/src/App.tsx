@@ -23,8 +23,17 @@ type View =
   | { name: 'ask'; lessonIds: string[]; title: string; back: View }
   | { name: 'print'; id: string; back: View };
 
+// Tocar no aviso de revisão abre o app em /?revisar=1: vai direto para os cartões.
+let openReviewOnStart = new URLSearchParams(window.location.search).get('revisar') === '1';
+if (openReviewOnStart) window.history.replaceState(null, '', '/');
+
 function SignedIn({ userId }: { userId: string }) {
-  const [view, setView] = useState<View>({ name: 'list' });
+  const [view, setView] = useState<View>(() =>
+    openReviewOnStart ? { name: 'review', title: 'Revisar', back: { name: 'list' } } : { name: 'list' },
+  );
+  useEffect(() => {
+    openReviewOnStart = false;
+  }, []);
   const [subjects, setSubjects] = useState<string[]>([]);
   useEffect(() => startUploadLoop(userId), [userId]);
   // Cada tela começa do topo, como uma página nova.

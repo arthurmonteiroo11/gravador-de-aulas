@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { cardsOfLesson, cardsOfLessons, createFlashcards, dueCards, gradeCard, lessonsWithCards, nextReview, type Flashcard } from '../lessons/flashcards';
 import Icon from '../components/Icon';
+import ReminderCard from '../components/ReminderCard';
 
 type Props = {
   /** Uma aula: revisa todos os cartões dela. Sem aula: só os que venceram, de todas. */
@@ -183,6 +184,8 @@ export default function ReviewScreen({ lessonId, lessonIds, title, onBack }: Pro
           </div>
         </>
       )}
+
+      <ReminderCard />
 
       {lessonId && (
         <div className="actions" style={{ justifyContent: 'center' }}>

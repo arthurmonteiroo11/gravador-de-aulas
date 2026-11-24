@@ -10,6 +10,8 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['icons/apple-touch-icon.png'],
+      // Aviso de revisão: o service worker gerado importa o tratamento de push.
+      workbox: { importScripts: ['push-sw.js'] },
       manifest: {
         name: 'Gravador de Aulas',
         short_name: 'Aulas',

@@ -1,6 +1,12 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto' | 'tag' | 'chat' | 'send' | 'target';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto' | 'tag' | 'chat' | 'send' | 'target' | 'bell';
 
 const PATHS: Record<Name, JSX.Element> = {
+  bell: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15Z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </g>
+  ),
   tag: (
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
       <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.4 6.4a1.5 1.5 0 0 1-2.1 0Z" />

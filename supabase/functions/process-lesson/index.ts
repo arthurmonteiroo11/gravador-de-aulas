@@ -5,6 +5,7 @@ import { flashcardsPrompt } from '../_shared/flashcards.ts';
 import { combinePrompt, fallbackTitle, MAX_LESSONS, type CombineSource } from '../_shared/combine.ts';
 import type { LessonRow } from '../_shared/types.ts';
 import { contextNote } from '../_shared/context.ts';
+import { generateVapidKeys, reminderMessage, sendPush, type VapidKeys } from '../_shared/webpush.ts';
 import { askPrompt, cleanAnswer, MAX_ASK_LESSONS, MAX_QUESTION_CHARS, type AskLesson, type AskTurn } from '../_shared/ask.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
@@ -221,6 +222,82 @@ async function flashcards(req: Request, lessonId: unknown, replace: boolean): Pr
   return json({ count: cards.length });
 }
 
+/** Chaves do servidor de avisos: lidas do banco; na primeira vez, criadas e guardadas. */
+async function vapidKeys(): Promise<VapidKeys> {
+  const db = createClient(URL_, SERVICE_KEY);
+  const read = async () => (await db.from('push_config').select('public_key, private_jwk').eq('id', 1).maybeSingle()).data;
+  let row = await read();
+  if (!row) {
+    const k = await generateVapidKeys();
+    // Duas chamadas ao mesmo tempo: só a primeira grava; as duas usam a que ficou.
+    await db.from('push_config').upsert({ id: 1, public_key: k.publicKey, private_jwk: k.privateJwk }, { onConflict: 'id', ignoreDuplicates: true });
+    row = await read();
+  }
+  if (!row) throw new Error('Não deu para criar as chaves dos avisos. Rode o SQL do lembrete.');
+  return { publicKey: row.public_key, privateJwk: row.private_jwk };
+}
+
+type Subscription = { id: number; user_id: string; endpoint: string; p256dh: string; auth: string; origin: string };
+
+/** Manda o aviso para cada aparelho da lista; inscrição que não existe mais é apagada. */
+async function notify(subs: Subscription[], message: (userId: string) => Promise<unknown | null>): Promise<{ sent: number; removed: number; failed: number }> {
+  const db = createClient(URL_, SERVICE_KEY);
+  const keys = await vapidKeys();
+  const out = { sent: 0, removed: 0, failed: 0 };
+  for (const sub of subs) {
+    const msg = await message(sub.user_id);
+    if (!msg) continue;
+    try {
+      const r = await sendPush(sub, msg, keys, sub.origin);
+      if (r.gone) {
+        await db.from('push_subscriptions').delete().eq('id', sub.id);
+        out.removed++;
+      } else if (r.ok) {
+        await db.from('push_subscriptions').update({ last_sent_at: new Date().toISOString() }).eq('id', sub.id);
+        out.sent++;
+      } else {
+        console.warn(`aviso recusado (${r.status}) para ${new URL(sub.endpoint).host}`);
+        out.failed++;
+      }
+    } catch (e) {
+      console.warn('aviso falhou:', e);
+      out.failed++;
+    }
+  }
+  return out;
+}
+
+/** Agendador, todo dia de manhã: avisa só quem tem cartões vencidos. */
+async function remindAll(): Promise<Response> {
+  const db = createClient(URL_, SERVICE_KEY);
+  const { data, error } = await db.from('push_subscriptions').select('id, user_id, endpoint, p256dh, auth, origin');
+  if (error) throw error;
+  const due = new Map<string, number>();
+  const now = new Date().toISOString();
+  const result = await notify((data ?? []) as Subscription[], async (userId) => {
+    if (!due.has(userId)) {
+      const { count } = await db.from('flashcards').select('id', { count: 'exact', head: true }).eq('user_id', userId).lte('due_at', now);
+      due.set(userId, count ?? 0);
+    }
+    const n = due.get(userId)!;
+    return n > 0 ? reminderMessage(n) : null;
+  });
+  return json(result);
+}
+
+/** Botão "Enviar teste": só para os aparelhos de quem pediu. */
+async function testPush(req: Request): Promise<Response> {
+  const auth = req.headers.get('authorization');
+  if (!auth) return json({ error: 'não autorizado' }, 403);
+  const asUser = createClient(URL_, ANON_KEY, { global: { headers: { authorization: auth } } });
+  const { data, error } = await asUser.from('push_subscriptions').select('id, user_id, endpoint, p256dh, auth, origin');
+  if (error) throw error;
+  if (!data?.length) return json({ error: 'Este aparelho ainda não ativou o lembrete.' }, 404);
+  const r = await notify(data as Subscription[], () => Promise.resolve({ title: 'Lembrete ativado', body: 'É assim que o aviso de revisão vai aparecer.', url: '/' }));
+  if (!r.sent) return json({ error: 'O aviso não saiu. Desative e ative o lembrete de novo.' }, 502);
+  return json(r);
+}
+
 /** Frase curta para a tela: o detalhe técnico fica no log da função. */
 function aiErrorText(e: unknown, action: string): string {
   if (e instanceof QuotaError) return e.message;
@@ -243,6 +320,32 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error(e);
       return json({ error: aiErrorText(e, 'criar os flashcards') }, 500);
+    }
+  }
+  if (body?.pushKey === true) {
+    if (!req.headers.get('authorization')) return json({ error: 'não autorizado' }, 403);
+    try {
+      return json({ publicKey: (await vapidKeys()).publicKey });
+    } catch (e) {
+      console.error(e);
+      return json({ error: 'Os avisos ainda não estão prontos no servidor. Rode o SQL do lembrete.' }, 500);
+    }
+  }
+  if (body?.remind === true) {
+    if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) return json({ error: 'não autorizado' }, 403);
+    try {
+      return await remindAll();
+    } catch (e) {
+      console.error(e);
+      return json({ error: String((e as Error)?.message ?? e).slice(0, 200) }, 500);
+    }
+  }
+  if (body?.testPush === true) {
+    try {
+      return await testPush(req);
+    } catch (e) {
+      console.error(e);
+      return json({ error: 'Não deu para enviar o teste. Verifique a internet.' }, 500);
     }
   }
   if (body?.ask !== undefined) {
