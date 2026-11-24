@@ -1,6 +1,21 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto' | 'tag' | 'chat' | 'send' | 'target';
 
 const PATHS: Record<Name, JSX.Element> = {
+  tag: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.4 6.4a1.5 1.5 0 0 1-2.1 0Z" />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+    </g>
+  ),
+  chat: <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 17h-8.5L6 20.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
+  send: <path d="M12 19V5.5M6 11l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />,
+  target: (
+    <g fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </g>
+  ),
   sun: (
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <circle cx="12" cy="12" r="4" />

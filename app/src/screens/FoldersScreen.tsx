@@ -1,15 +1,17 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import type { Lesson } from '../lib/types';
 import { listLessons } from '../lessons/api';
-import { cleanName, createFolder, deleteFolder, listFolders, mergeFolders, renameFolder } from '../lessons/folders';
+import { cleanName, createFolder, deleteFolder, listSubjects, MAX_TERMS_CHARS, mergeFolders, renameFolder, saveTerms, termCount, type Subject } from '../lessons/folders';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
+import Sheet from '../components/Sheet';
 
 type Props = { onBack: () => void; onChanged?: (folders: string[]) => void };
 
-/** Pastas de matérias: criar, renomear e apagar. As aulas acompanham a pasta. */
+/** Pastas de matérias: criar, renomear, apagar e dar os termos da matéria. As aulas acompanham a pasta. */
 export default function FoldersScreen({ onBack, onChanged }: Props) {
-  const [saved, setSaved] = useState<string[]>([]);
+  const [saved, setSaved] = useState<Subject[]>([]);
+  const [termsOf, setTermsOf] = useState<string | null>(null);
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
@@ -18,10 +20,10 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    const [f, l] = await Promise.all([listFolders(), listLessons()]);
+    const [f, l] = await Promise.all([listSubjects(), listLessons()]);
     setSaved(f);
     setLessons(l);
-    onChanged?.(mergeFolders(f, l));
+    onChanged?.(mergeFolders(f.map((x) => x.name), l));
   };
 
   useEffect(() => {
@@ -58,7 +60,8 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
     });
   };
 
-  const folders = mergeFolders(saved, lessons ?? []);
+  const folders = mergeFolders(saved.map((x) => x.name), lessons ?? []);
+  const terms = (f: string) => saved.find((x) => x.name === f)?.terms ?? '';
   const count = (f: string) => (lessons ?? []).filter((l) => l.subject === f).length;
   const loose = (lessons ?? []).filter((l) => !l.subject).length;
 
@@ -111,6 +114,10 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
                     <span className="dot" />
                     <strong>{f}</strong>
                     <small>{count(f) === 0 ? 'vazia' : `${count(f)} ${count(f) === 1 ? 'aula' : 'aulas'}`}</small>
+                    <button className="terms-link" onClick={() => setTermsOf(f)} disabled={busy}>
+                      <Icon name="tag" size={14} />
+                      {termCount(terms(f)) ? `${termCount(terms(f))} ${termCount(terms(f)) === 1 ? 'termo' : 'termos'}` : 'Termos da matéria'}
+                    </button>
                   </span>
                   <span className="folder-buttons">
                     <button className="icon-button" aria-label={`Renomear ${f}`} onClick={() => setRenaming({ from: f, to: f })} disabled={busy}>
@@ -137,6 +144,58 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
           </p>
         )}
       </div>
+      {termsOf && (
+        <TermsSheet
+          folder={termsOf}
+          initial={terms(termsOf)}
+          onClose={() => setTermsOf(null)}
+          onSaved={() => {
+            setTermsOf(null);
+            void load();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+/** Lista de termos da pasta: o Gemini usa esta grafia ao transcrever e reescrever as próximas aulas. */
+function TermsSheet({ folder, initial, onClose, onSaved }: { folder: string; initial: string; onClose: () => void; onSaved: () => void }) {
+  const [text, setText] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await saveTerms(folder, text);
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet title={`Termos de ${folder}`} titleId="terms-title" onClose={onClose}>
+      <p className="muted hint sheet-lead">
+        Nomes, fórmulas e palavras técnicas que o professor usa. A transcrição e a reescrita das próximas aulas desta pasta passam a usar esta grafia.
+      </p>
+      <label htmlFor="terms-text">Um por linha ou separados por vírgula</label>
+      <textarea
+        id="terms-text"
+        className="terms-text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={MAX_TERMS_CHARS}
+        rows={6}
+        placeholder={'Ex.: regra de L’Hôpital, Bhaskara, limite lateral, derivada parcial'}
+      />
+      <p className="muted hint">{termCount(text)} {termCount(text) === 1 ? 'termo' : 'termos'}</p>
+      {error && <p className="notice" role="alert">{error}</p>}
+      <div className="actions">
+        <button className="ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="primary grow" onClick={() => void save()} disabled={busy}>{busy ? 'Salvando…' : 'Salvar termos'}</button>
+      </div>
+    </Sheet>
   );
 }

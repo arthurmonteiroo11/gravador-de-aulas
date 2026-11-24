@@ -31,6 +31,19 @@ export async function cardsOfLesson(lessonId: string): Promise<Flashcard[]> {
   return (must(await supabase.from('flashcards').select('*').eq('lesson_id', lessonId).order('created_at')) ?? []) as Flashcard[];
 }
 
+/** Modo prova: todos os cartões das aulas da pasta, vencidos ou não. */
+export async function cardsOfLessons(lessonIds: string[]): Promise<Flashcard[]> {
+  if (!lessonIds.length) return [];
+  return (must(await supabase.from('flashcards').select('*').in('lesson_id', lessonIds).order('due_at').limit(400)) ?? []) as Flashcard[];
+}
+
+/** Quais destas aulas já têm cartões. */
+export async function lessonsWithCards(lessonIds: string[]): Promise<Set<string>> {
+  if (!lessonIds.length) return new Set();
+  const rows = must(await supabase.from('flashcards').select('lesson_id').in('lesson_id', lessonIds).limit(5000)) ?? [];
+  return new Set((rows as { lesson_id: string }[]).map((r) => r.lesson_id));
+}
+
 /** Cartões que já venceram, de todas as aulas, os mais atrasados primeiro. */
 export async function dueCards(now = new Date(), limit = 60): Promise<Flashcard[]> {
   return (must(await supabase.from('flashcards').select('*').lte('due_at', now.toISOString()).order('due_at').limit(limit)) ?? []) as Flashcard[];

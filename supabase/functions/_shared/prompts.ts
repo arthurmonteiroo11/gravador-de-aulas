@@ -40,3 +40,14 @@ Crie flashcards para estudar esse conteúdo, em português:
 
 Material:
 `;
+
+export const ASK_PROMPT = `Você é um monitor que ajuda um aluno a estudar. Responda à pergunta usando SOMENTE as transcrições de aula abaixo.
+Cada linha começa com uma etiqueta [A<n> <tempo>]: A<n> é a aula e <tempo> é o momento em que o professor disse aquilo.
+
+Regras:
+- Responda em português, de forma clara e curta (no máximo uns 8 tópicos ou 3 parágrafos), em Markdown.
+- Use só o que está nas aulas. Se a resposta não estiver nelas, diga "Isso não aparece nas aulas." e sugira o que mais perto disso foi dito, se houver.
+- Marque no texto de onde veio cada informação com [1], [2]... e liste essas fontes em "sources".
+- Em cada fonte: "n" (o número usado no texto), "lesson" (a etiqueta da aula, ex.: "A1"), "time" (o tempo exatamente como aparece na etiqueta da linha, ex.: "12:34") e "quote" (um trecho curto, de até 20 palavras, copiado da linha).
+- No máximo 5 fontes.
+`;

@@ -9,6 +9,28 @@ export async function listFolders(): Promise<string[]> {
   return (data ?? []).map((r) => r.name as string);
 }
 
+export type Subject = { name: string; terms: string };
+
+/** Pastas com os termos de cada uma. Antes do SQL dos termos, vem sem termos. */
+export async function listSubjects(): Promise<Subject[]> {
+  const withTerms = await supabase.from('subjects').select('name, terms').order('name');
+  if (!withTerms.error) return (withTerms.data ?? []) as Subject[];
+  return (await listFolders()).map((name) => ({ name, terms: '' }));
+}
+
+export const MAX_TERMS_CHARS = 2000;
+
+/** Quantos termos tem a lista (separados por vírgula, ponto e vírgula ou linha). */
+export const termCount = (terms: string) => new Set(terms.split(/[,;\n]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)).size;
+
+/** Guarda os termos da pasta; cria a pasta se ela só existia nas aulas. */
+export async function saveTerms(name: string, terms: string): Promise<void> {
+  const n = cleanName(name);
+  if (!n) throw new Error('Pasta sem nome.');
+  const { error } = await supabase.from('subjects').upsert({ name: n, terms: terms.slice(0, MAX_TERMS_CHARS) }, { onConflict: 'user_id,name' });
+  if (error) throw new Error('Não salvou os termos. Verifique a internet.');
+}
+
 export function mergeFolders(saved: string[], lessons: Pick<Lesson, 'subject'>[]): string[] {
   const all = new Set([...saved, ...lessons.map((l) => l.subject?.trim()).filter((s): s is string => Boolean(s))]);
   return [...all].sort((a, b) => a.localeCompare(b, 'pt-BR'));

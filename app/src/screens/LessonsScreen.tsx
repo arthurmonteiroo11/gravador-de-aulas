@@ -13,6 +13,7 @@ import { dueCount } from '../lessons/flashcards';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
 import ThemeButton from '../components/ThemeButton';
+import ExamCard from '../components/ExamCard';
 import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
 
 export type OpenFocus = { query?: string; startS?: number | null; tab?: 'summary' | 'rewrite' | 'transcript' | 'notes' };
@@ -24,7 +25,19 @@ type Props = {
   onImport?: () => void;
   onReview?: () => void;
   onFolders?: () => void;
+  onExamCards?: (subject: string, lessonIds: string[]) => void;
+  onAsk?: (lessonIds: string[], title: string) => void;
 };
+
+/** Modo prova usa no máximo as 8 aulas mais recentes: o mesmo limite do resumo combinado. */
+const EXAM_LESSONS = 8;
+let lastSubject: string | null = null;
+
+/** Mesma pasta, mesmas aulas, mesma chave: repetir o resumo da matéria não gasta cota de novo. */
+async function examKey(ids: string[]): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode([...ids].sort().join(','))));
+  return 'prova-' + [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+}
 
 const POLL_MS = 10_000;
 const SEARCH_DELAY_MS = 250;
@@ -40,11 +53,16 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy, onImport, onReview, onFolders }: Props) {
+export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy, onImport, onReview, onFolders, onExamCards, onAsk }: Props) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [subject, setSubject] = useState<string | null>(null);
+  // A pasta escolhida continua escolhida ao voltar de outra tela.
+  const [subject, setSubjectState] = useState<string | null>(lastSubject);
+  const setSubject = (s: string | null) => {
+    lastSubject = s;
+    setSubjectState(s);
+  };
   const [hits, setHits] = useState<TextHit[]>([]);
   const [studies, setStudies] = useState<StudyNote[]>([]);
   // null: modo normal. Um conjunto: escolhendo aulas para juntar.
@@ -168,6 +186,29 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
     }
   };
 
+  const readyInSubject = subject
+    ? (lessons ?? []).filter((l) => l.subject === subject && l.status === 'ready').sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
+    : [];
+  const examLessons = readyInSubject.slice(0, EXAM_LESSONS);
+  const examIds = examLessons.map((l) => l.id);
+
+  const examSummary = async () => {
+    const ids = [...examIds].sort();
+    // Já existe um resumo destas mesmas aulas: abre sem chamar o Gemini.
+    const existing = studies.find((n) => [...n.lesson_ids].sort().join(',') === ids.join(','));
+    if (existing) return onOpenStudy(existing.id);
+    setCombining(true);
+    setError(null);
+    try {
+      const id = await combineLessons(ids, await examKey(ids));
+      if (alive.current) onOpenStudy(id);
+    } catch (err) {
+      if (!alive.current) return;
+      setError((err as Error).message);
+      setCombining(false);
+    }
+  };
+
   const finalize = async (id: string) => {
     try {
       await finalizeAbandoned(id);
@@ -226,6 +267,18 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
             </button>
           )}
         </div>
+      )}
+
+      {subject && !picked && !query.trim() && examLessons.length > 0 && (
+        <ExamCard
+          subject={subject}
+          count={examLessons.length}
+          more={readyInSubject.length > EXAM_LESSONS}
+          combining={combining}
+          onSummary={() => void examSummary()}
+          onCards={() => onExamCards?.(subject, examIds)}
+          onAsk={() => onAsk?.(examIds, subject)}
+        />
       )}
 
       <div>

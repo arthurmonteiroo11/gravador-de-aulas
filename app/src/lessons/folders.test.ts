@@ -11,3 +11,8 @@ describe('pastas', () => {
     expect(folderTaken('Biologia', 'Física', ['Física', 'Química'])).toBe(false);
   });
 });
+
+import { termCount } from './folders';
+describe('termos', () => {
+  it('conta termos sem repetir', () => expect(termCount('derivada, Derivada;\nlimite\n\n , integral')).toBe(3));
+});

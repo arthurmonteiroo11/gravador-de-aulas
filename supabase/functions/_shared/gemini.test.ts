@@ -146,3 +146,17 @@ Deno.test('todos sobrecarregados: devolve o erro do principal', async () => {
   assertEquals((e as RateLimitError).status, 503);
   assertEquals((e as RateLimitError).reason, 'high demand');
 });
+
+Deno.test('contexto da matéria vai no começo da transcrição e da reescrita', async () => {
+  const bodies: any[] = [];
+  const fetcher = (_url: string | URL | Request, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Promise.resolve(reply(bodies.length === 1 ? [] : { rewrite: 'r', summary: 's' }));
+  };
+  const context = 'Contexto da aula:\n- Matéria: Cálculo I.';
+  await transcribeBlock([{ data: new Uint8Array([1]), mimeType: 'audio/mp4' }], { apiKey: 'k', fetcher, context });
+  await rewriteAndSummarize('[00:00] oi', { apiKey: 'k', fetcher, context });
+  for (const b of bodies) assertEquals(b.contents[0].parts[0].text.startsWith(context), true);
+  await transcribeBlock([], { apiKey: 'k', fetcher: (_u, init) => { bodies.push(JSON.parse(String(init?.body))); return Promise.resolve(reply([])); } });
+  assertEquals(bodies[2].contents[0].parts[0].text.startsWith('Você vai receber'), true);
+});

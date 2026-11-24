@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { cardsOfLesson, createFlashcards, dueCards, gradeCard, nextReview, type Flashcard } from '../lessons/flashcards';
+import { cardsOfLesson, cardsOfLessons, createFlashcards, dueCards, gradeCard, lessonsWithCards, nextReview, type Flashcard } from '../lessons/flashcards';
 import Icon from '../components/Icon';
 
 type Props = {
   /** Uma aula: revisa todos os cartões dela. Sem aula: só os que venceram, de todas. */
   lessonId?: string;
+  /** Modo prova: todos os cartões das aulas de uma pasta. */
+  lessonIds?: string[];
   title: string;
   onBack: () => void;
 };
@@ -13,17 +15,24 @@ type Props = {
 type Round = { queue: Flashcard[]; total: number; right: number; missed: string[] };
 
 /** Revisão: mostra a pergunta, vira para a resposta e a pessoa diz se acertou. */
-export default function ReviewScreen({ lessonId, title, onBack }: Props) {
+export default function ReviewScreen({ lessonId, lessonIds, title, onBack }: Props) {
   const [round, setRound] = useState<Round | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remaking, setRemaking] = useState(false);
   const [confirmRemake, setConfirmRemake] = useState(false);
+  const [missing, setMissing] = useState<string[]>([]);
+  const [making, setMaking] = useState<{ done: number; total: number } | null>(null);
+  const folderKey = lessonIds?.join(',') ?? '';
 
   const load = async () => {
     setError(null);
     try {
-      const cards = lessonId ? await cardsOfLesson(lessonId) : await dueCards();
+      const cards = lessonIds ? await cardsOfLessons(lessonIds) : lessonId ? await cardsOfLesson(lessonId) : await dueCards();
+      if (lessonIds) {
+        const has = await lessonsWithCards(lessonIds);
+        setMissing(lessonIds.filter((id) => !has.has(id)));
+      }
       setRound({ queue: cards, total: cards.length, right: 0, missed: [] });
       setFlipped(false);
     } catch {
@@ -34,7 +43,7 @@ export default function ReviewScreen({ lessonId, title, onBack }: Props) {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId]);
+  }, [lessonId, folderKey]);
 
   useEffect(() => {
     if (!confirmRemake) return;
@@ -60,6 +69,24 @@ export default function ReviewScreen({ lessonId, title, onBack }: Props) {
       await gradeCard(card, correct);
     } catch {
       setError('Sem internet: esta resposta não ficou salva.');
+    }
+  };
+
+  // Uma chamada ao Gemini por aula sem cartões; cada aula só precisa disso uma vez.
+  const makeMissing = async () => {
+    const todo = missing;
+    setError(null);
+    setMaking({ done: 0, total: todo.length });
+    try {
+      for (const [i, id] of todo.entries()) {
+        await createFlashcards(id);
+        setMaking({ done: i + 1, total: todo.length });
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setMaking(null);
+      await load();
     }
   };
 
@@ -95,18 +122,30 @@ export default function ReviewScreen({ lessonId, title, onBack }: Props) {
   return (
     <section className="enter review">
       {back}
-      <h1 className="title">{lessonId ? title : 'Revisar'}</h1>
+      <h1 className="title">{lessonId || lessonIds ? title : 'Revisar'}</h1>
+      {lessonIds && <p className="subtitle">Modo prova: todos os cartões da pasta, vencidos ou não.</p>}
       <div className="review-progress" aria-label={`${done} de ${round.total} cartões`}>
         <div className="progress"><span style={{ width: `${round.total ? (done / round.total) * 100 : 0}%` }} /></div>
         <span className="num">{done}/{round.total}</span>
       </div>
 
       {error && <p className="notice" role="alert">{error}</p>}
+      {lessonIds && missing.length > 0 && (
+        <div className="exam-missing">
+          <p>
+            {missing.length === 1 ? '1 aula da pasta ainda não tem cartões.' : `${missing.length} aulas da pasta ainda não têm cartões.`}
+          </p>
+          <button className="pill" onClick={() => void makeMissing()} disabled={making !== null}>
+            <Icon name="cards" size={16} />
+            {making ? `Criando ${making.done + 1} de ${making.total}…` : 'Criar agora'}
+          </button>
+        </div>
+      )}
 
       {round.total === 0 ? (
         <div className="empty">
-          <p className="title">Nada para revisar hoje</p>
-          <p>Os cartões voltam no dia certo: quanto mais você acerta, mais tempo eles demoram para aparecer.</p>
+          <p className="title">{lessonIds ? 'Ainda sem cartões' : 'Nada para revisar hoje'}</p>
+          <p>{lessonIds ? 'Crie os cartões das aulas desta pasta para revisar tudo de uma vez.' : 'Os cartões voltam no dia certo: quanto mais você acerta, mais tempo eles demoram para aparecer.'}</p>
         </div>
       ) : finished ? (
         <div className="empty fade-in">

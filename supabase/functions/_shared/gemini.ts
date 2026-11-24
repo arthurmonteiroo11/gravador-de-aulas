@@ -31,7 +31,7 @@ export class QuotaError extends GeminiError {}
 /** O modelo não existe (mais) para esta chave. */
 class ModelNotFoundError extends GeminiError {}
 
-type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; fallbacks?: string[]; maxOutputTokens?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void> };
+type Opts = { /** Matéria e termos da pasta, quando houver. */ context?: string; apiKey?: string; fetcher?: typeof fetch; model?: string; fallbacks?: string[]; maxOutputTokens?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void> };
 
 /** A frase que o Google manda no corpo do erro, sem o resto do JSON. */
 function googleMessage(body: string): string {
@@ -129,8 +129,11 @@ export function geminiMime(mime: string): string {
   return pure === 'audio/mpeg' ? 'audio/mp3' : pure;
 }
 
+/** O contexto da matéria vai antes das instruções, para valer no pedido inteiro. */
+const withContext = (prompt: string, context?: string) => (context ? `${context}\n\n${prompt}` : prompt);
+
 export async function transcribeBlock(parts: AudioPart[], opts: Opts = {}): Promise<ModelSegment[]> {
-  const content: unknown[] = [{ text: TRANSCRIBE_PROMPT }];
+  const content: unknown[] = [{ text: withContext(TRANSCRIBE_PROMPT, opts.context) }];
   parts.forEach((p, i) => {
     content.push({ text: `Parte ${i}` });
     content.push({ inline_data: { mime_type: geminiMime(p.mimeType), data: encodeBase64(p.data) } });
@@ -140,7 +143,7 @@ export async function transcribeBlock(parts: AudioPart[], opts: Opts = {}): Prom
 }
 
 export async function rewriteAndSummarize(transcript: string, opts: Opts = {}): Promise<{ rewrite: string; summary: string }> {
-  const result = (await generate([{ text: REWRITE_PROMPT + transcript }], OUTPUTS_SCHEMA, opts)) as
+  const result = (await generate([{ text: withContext(REWRITE_PROMPT, opts.context) + transcript }], OUTPUTS_SCHEMA, opts)) as
     | { rewrite?: string; summary?: string }
     | null;
   if (!result?.rewrite || !result?.summary) throw new GeminiError('Resposta sem reescrita ou resumo');
@@ -194,4 +197,25 @@ export async function makeFlashcards(prompt: string, opts: Opts = {}): Promise<C
   const cards = cleanCards(await generate([{ text: prompt }], CARDS_SCHEMA, { maxOutputTokens: 4096, timeoutMs: 90_000, ...opts }));
   if (!cards.length) throw new GeminiError('O Gemini não devolveu cartões');
   return cards;
+}
+
+const ASK_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    answer: { type: 'STRING' },
+    sources: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { n: { type: 'INTEGER' }, lesson: { type: 'STRING' }, time: { type: 'STRING' }, quote: { type: 'STRING' } },
+        required: ['n', 'lesson', 'time', 'quote'],
+      },
+    },
+  },
+  required: ['answer', 'sources'],
+};
+
+/** Uma pergunta sobre as aulas: uma chamada, resposta curta com as fontes. */
+export async function askAboutLessons(prompt: string, opts: Opts = {}): Promise<unknown> {
+  return await generate([{ text: prompt }], ASK_SCHEMA, { maxOutputTokens: 2048, timeoutMs: 75_000, ...opts });
 }

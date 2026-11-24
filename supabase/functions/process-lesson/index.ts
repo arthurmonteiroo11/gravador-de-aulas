@@ -1,9 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { processUntilDone, type StepDeps } from '../_shared/processStep.ts';
-import { combineTexts, GEMINI_MODEL, GeminiTimeoutError, makeFlashcards, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
+import { askAboutLessons, combineTexts, GEMINI_MODEL, GeminiTimeoutError, makeFlashcards, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
 import { flashcardsPrompt } from '../_shared/flashcards.ts';
 import { combinePrompt, fallbackTitle, MAX_LESSONS, type CombineSource } from '../_shared/combine.ts';
 import type { LessonRow } from '../_shared/types.ts';
+import { contextNote } from '../_shared/context.ts';
+import { askPrompt, cleanAnswer, MAX_ASK_LESSONS, MAX_QUESTION_CHARS, type AskLesson, type AskTurn } from '../_shared/ask.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -33,6 +35,19 @@ function depsFor(lessonId: string): StepDeps {
     if (r.error) throw r.error;
     return r.data;
   };
+  // Matéria e termos da pasta: lidos uma vez por chamada. Sem a coluna (SQL antigo), segue sem contexto.
+  let ctx: Promise<string> | null = null;
+  const context = () => (ctx ??= (async () => {
+    try {
+      const lesson = must(await db.from('lessons').select('user_id, subject').eq('id', lessonId).single()) as { user_id: string; subject: string | null };
+      if (!lesson.subject) return '';
+      const { data } = await db.from('subjects').select('terms').eq('user_id', lesson.user_id).eq('name', lesson.subject).maybeSingle();
+      return contextNote(lesson.subject, (data as { terms?: string } | null)?.terms ?? '');
+    } catch (e) {
+      console.warn('sem contexto da matéria:', e);
+      return '';
+    }
+  })());
   return {
     getLesson: async (id) => must(await db.from('lessons').select('*').eq('id', id).single()) as LessonRow,
     updateLesson: async (patch) => void must(await db.from('lessons').update(patch).eq('id', lessonId)),
@@ -51,8 +66,8 @@ function depsFor(lessonId: string): StepDeps {
         { lesson_id: lessonId, kind: 'rewrite', content_md: rewrite, model: GEMINI_MODEL },
         { lesson_id: lessonId, kind: 'summary', content_md: summary, model: GEMINI_MODEL },
       ])),
-    transcribe: (parts) => transcribeBlock(parts),
-    rewrite: (t) => rewriteAndSummarize(t),
+    transcribe: async (parts) => transcribeBlock(parts, { context: await context() }),
+    rewrite: async (t) => rewriteAndSummarize(t, { context: await context() }),
     model: GEMINI_MODEL,
     acquireLease: async () => Boolean(must(await db.rpc('try_lease', { p_lesson: lessonId, p_seconds: 150 }))),
     releaseLease: async () => void must(await db.rpc('release_lease', { p_lesson: lessonId })),
@@ -111,21 +126,52 @@ async function combine(req: Request, ids: unknown, requestKey: unknown): Promise
 /** Transcrição inteira de uma aula, em páginas: o banco entrega no máximo 1000 linhas por vez. */
 type Db = ReturnType<typeof createClient<any>>;
 
-async function transcriptOf(db: Db, lessonId: string): Promise<string> {
+async function segmentsOf(db: Db, lessonId: string): Promise<{ start_s: number; text: string }[]> {
   const page = 1000;
-  const parts: string[] = [];
+  const out: { start_s: number; text: string }[] = [];
   for (let from = 0; from < 20_000; from += page) {
     const { data, error } = await db
       .from('transcript_segments')
-      .select('text')
+      .select('start_s, text')
       .eq('lesson_id', lessonId)
       .order('start_s')
       .range(from, from + page - 1);
     if (error) throw error;
-    parts.push(...(data ?? []).map((s) => s.text as string));
+    out.push(...((data ?? []) as { start_s: number; text: string }[]));
     if ((data ?? []).length < page) break;
   }
-  return parts.join(' ');
+  return out;
+}
+
+async function transcriptOf(db: Db, lessonId: string): Promise<string> {
+  return (await segmentsOf(db, lessonId)).map((s) => s.text).join(' ');
+}
+
+/** Pergunta sobre uma aula ou uma pasta. Roda com o login da pessoa e responde só com base nas transcrições. */
+async function ask(req: Request, ids: unknown, question: unknown, history: unknown): Promise<Response> {
+  const auth = req.headers.get('authorization');
+  if (!auth) return json({ error: 'não autorizado' }, 403);
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > MAX_ASK_LESSONS || !ids.every((i) => typeof i === 'string')) {
+    return json({ error: `Escolha de 1 a ${MAX_ASK_LESSONS} aulas.` }, 400);
+  }
+  const q = typeof question === 'string' ? question.trim() : '';
+  if (!q || q.length > MAX_QUESTION_CHARS) return json({ error: `Escreva uma pergunta de até ${MAX_QUESTION_CHARS} letras.` }, 400);
+  const turns: AskTurn[] = (Array.isArray(history) ? history : [])
+    .filter((t) => typeof t?.q === 'string' && typeof t?.a === 'string')
+    .map((t) => ({ q: t.q, a: t.a }));
+  const db = createClient(URL_, ANON_KEY, { global: { headers: { authorization: auth } } });
+
+  const { data: rows, error } = await db.from('lessons').select('id, title, recorded_at').in('id', ids);
+  if (error) throw error;
+  if ((rows ?? []).length !== ids.length) return json({ error: 'Aula não encontrada.' }, 404);
+  const ordered = [...rows!].sort((a, b) => String(a.recorded_at).localeCompare(String(b.recorded_at)));
+  const lessons: AskLesson[] = [];
+  for (const l of ordered) lessons.push({ ...(l as Omit<AskLesson, 'segments'>), segments: await segmentsOf(db, l.id) });
+  if (!lessons.some((l) => l.segments.length)) return json({ error: 'Estas aulas ainda não têm transcrição.' }, 409);
+
+  const answer = cleanAnswer(await askAboutLessons(askPrompt(lessons, q, turns)), lessons);
+  if (!answer.answer) return json({ error: 'O Gemini não respondeu. Tente perguntar de outro jeito.' }, 502);
+  return json(answer);
 }
 
 /** Cria os flashcards de uma aula. Se já existirem, devolve os de antes, a menos que peça para refazer. */
@@ -187,6 +233,14 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error(e);
       return json({ error: aiErrorText(e, 'criar os flashcards') }, 500);
+    }
+  }
+  if (body?.ask !== undefined) {
+    try {
+      return await ask(req, body.ask, body.question, body.history);
+    } catch (e) {
+      console.error(e);
+      return json({ error: aiErrorText(e, 'responder') }, 500);
     }
   }
   if (body?.combine !== undefined) {

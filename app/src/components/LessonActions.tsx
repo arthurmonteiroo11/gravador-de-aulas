@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import type { AudioChunk, Lesson } from '../lib/types';
 import { cardCount, createFlashcards } from '../lessons/flashcards';
 import { deleteLesson, updateLesson } from '../lessons/api';
@@ -8,6 +7,7 @@ import { pendingKeys, removeChunk } from '../storage/localQueue';
 import { fileName, joinAudio, shareFile } from '../media/exportAudio';
 import SubjectPicker from './SubjectPicker';
 import Icon from './Icon';
+import Sheet from './Sheet';
 
 type Props = {
   lesson: Lesson;
@@ -16,12 +16,13 @@ type Props = {
   folders: string[];
   onReview: () => void;
   onPrint: () => void;
+  onAsk: () => void;
   onChanged: (patch: Partial<Lesson>) => void;
   onDeleted: () => void;
 };
 
-/** Os atalhos de estudo de uma aula: flashcards, PDF, áudio e editar. */
-export default function LessonActions({ lesson, chunks, urls, folders, onReview, onPrint, onChanged, onDeleted }: Props) {
+/** Os atalhos de estudo de uma aula: flashcards, perguntar, PDF, áudio e editar. */
+export default function LessonActions({ lesson, chunks, urls, folders, onReview, onPrint, onAsk, onChanged, onDeleted }: Props) {
   const [cards, setCards] = useState<number | null>(null);
   const [busy, setBusy] = useState<null | 'cards' | 'audio'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +68,10 @@ export default function LessonActions({ lesson, chunks, urls, folders, onReview,
         <button className="pill" onClick={() => void flashcards()} disabled={!ready || busy !== null}>
           <Icon name="cards" size={18} />
           {busy === 'cards' ? 'Criando…' : cards ? `Flashcards (${cards})` : 'Flashcards'}
+        </button>
+        <button className="pill" onClick={onAsk} disabled={!ready}>
+          <Icon name="chat" size={18} />
+          Perguntar
         </button>
         <button className="pill" onClick={onPrint} disabled={!ready}>
           <Icon name="doc" size={18} />
@@ -116,12 +121,6 @@ function EditLessonSheet({ lesson, folders, onClose, onSaved, onDeleted }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
     if (!confirmDelete) return;
     const timer = setTimeout(() => setConfirmDelete(false), 5000);
     return () => clearTimeout(timer);
@@ -156,30 +155,24 @@ function EditLessonSheet({ lesson, folders, onClose, onSaved, onDeleted }: {
     }
   };
 
-  // No body: dentro da tela animada, o position: fixed ficaria preso ao conteúdo.
-  return createPortal(
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="edit-lesson-title" onClick={(e) => e.stopPropagation()}>
-        <span className="sheet-grip" aria-hidden="true" />
-        <h2 id="edit-lesson-title">Editar aula</h2>
-        <label htmlFor="edit-title">Título</label>
-        <input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
-        <label htmlFor="edit-subject">Matéria</label>
-        <SubjectPicker id="edit-subject" folders={folders} value={subject} onChange={setSubject} />
-        {error && <p className="notice" role="alert">{error}</p>}
-        <div className="actions">
-          <button className="ghost" onClick={onClose} disabled={busy}>Cancelar</button>
-          <button className="primary grow" onClick={() => void save()} disabled={busy}>Salvar</button>
-        </div>
-        <div className="sheet-danger">
-          <button className="danger-outline" onClick={() => void remove()} disabled={busy} aria-live="polite">
-            <Icon name="trash" size={18} />
-            {confirmDelete ? 'Toque de novo para apagar de vez' : 'Apagar aula'}
-          </button>
-          <p className="muted hint">Apaga o áudio, o texto, as anotações e os flashcards desta aula.</p>
-        </div>
+  return (
+    <Sheet title="Editar aula" titleId="edit-lesson-title" onClose={onClose}>
+      <label htmlFor="edit-title">Título</label>
+      <input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
+      <label htmlFor="edit-subject">Matéria</label>
+      <SubjectPicker id="edit-subject" folders={folders} value={subject} onChange={setSubject} />
+      {error && <p className="notice" role="alert">{error}</p>}
+      <div className="actions">
+        <button className="ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="primary grow" onClick={() => void save()} disabled={busy}>Salvar</button>
       </div>
-    </div>,
-    document.body,
+      <div className="sheet-danger">
+        <button className="danger-outline" onClick={() => void remove()} disabled={busy} aria-live="polite">
+          <Icon name="trash" size={18} />
+          {confirmDelete ? 'Toque de novo para apagar de vez' : 'Apagar aula'}
+        </button>
+        <p className="muted hint">Apaga o áudio, o texto, as anotações e os flashcards desta aula.</p>
+      </div>
+    </Sheet>
   );
 }

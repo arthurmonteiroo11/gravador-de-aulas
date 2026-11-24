@@ -28,10 +28,11 @@ type Props = {
   folders?: string[];
   onReview?: (lessonId: string, title: string) => void;
   onPrint?: (lessonId: string) => void;
+  onAsk?: (lessonId: string, title: string) => void;
   onDeleted?: () => void;
 };
 
-export default function LessonScreen({ lessonId, onBack, focus, folders = [], onReview, onPrint, onDeleted }: Props) {
+export default function LessonScreen({ lessonId, onBack, focus, folders = [], onReview, onPrint, onAsk, onDeleted }: Props) {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [content, setContent] = useState<LessonContent | null>(null);
   const [tab, setTab] = useState<Tab>(focus?.tab ?? 'summary');
@@ -186,6 +187,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
           folders={folders}
           onReview={() => onReview?.(lesson.id, lesson.title)}
           onPrint={() => onPrint?.(lesson.id)}
+          onAsk={() => onAsk?.(lesson.id, lesson.title)}
           onChanged={(patch) => setLesson((l) => l && { ...l, ...patch })}
           onDeleted={() => (onDeleted ?? onBack)()}
         />
