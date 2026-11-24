@@ -7,6 +7,7 @@ import { putChunk } from '../storage/localQueue';
 import { createLesson, finishRecording } from '../lessons/api';
 import { formatClock } from '../lessons/format';
 import { serverErrorDetail } from '../lessons/errors';
+import { appUpdater } from '../lib/appUpdate';
 
 export const LIMIT_S = 5400; // 1h30
 
@@ -63,6 +64,12 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
   const cleanups = useRef<Array<() => unknown>>([]);
 
   useEffect(() => () => cleanups.current.forEach((fn) => void fn()), []);
+
+  // Atualização do app fica para depois enquanto esta tela está aberta.
+  useEffect(() => {
+    appUpdater.setRecording(true);
+    return () => appUpdater.setRecording(false);
+  }, []);
 
   // Atualiza o relógio e percebe pausas vindas do sistema (tela bloqueada, ligação).
   useEffect(() => {
