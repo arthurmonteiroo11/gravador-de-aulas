@@ -4,6 +4,7 @@ import { startUploadLoop } from './storage/uploader';
 import LoginScreen from './screens/LoginScreen';
 import LessonsScreen from './screens/LessonsScreen';
 import RecordScreen from './screens/RecordScreen';
+import LessonScreen from './screens/LessonScreen';
 
 type View = { name: 'list' } | { name: 'record' } | { name: 'lesson'; id: string };
 
@@ -13,6 +14,9 @@ function SignedIn({ userId }: { userId: string }) {
 
   if (view.name === 'record') {
     return <RecordScreen onDone={() => setView({ name: 'list' })} onCancel={() => setView({ name: 'list' })} />;
+  }
+  if (view.name === 'lesson') {
+    return <LessonScreen lessonId={view.id} onBack={() => setView({ name: 'list' })} />;
   }
   return <LessonsScreen onRecord={() => setView({ name: 'record' })} onOpen={(id) => setView({ name: 'lesson', id })} />;
 }
