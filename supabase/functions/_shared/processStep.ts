@@ -49,9 +49,9 @@ const sameProgress = (a: StepResult & { block_failures?: number }, b: StepResult
 /**
  * Encadeia passos na mesma chamada até a aula ficar pronta, parar de avançar
  * (esperando partes, outra chamada em andamento, Gemini ocupado) ou o tempo acabar.
- * O limite fica abaixo dos 150 s que a Edge Function pode rodar.
+ * Só começa um passo novo nos primeiros 45 s: um passo leva até 90 s, e a função pode rodar 150 s.
  */
-export async function processUntilDone(lessonId: string, deps: StepDeps, budgetMs = 100_000): Promise<StepResult> {
+export async function processUntilDone(lessonId: string, deps: StepDeps, budgetMs = 45_000): Promise<StepResult> {
   const startedAt = deps.now().getTime();
   let last = await processStep(lessonId, deps);
   while (!finished(last) && deps.now().getTime() - startedAt < budgetMs) {

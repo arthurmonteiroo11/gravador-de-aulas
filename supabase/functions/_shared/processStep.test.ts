@@ -159,3 +159,12 @@ Deno.test('limite do Gemini aparece na aula e some quando o bloco passa', async 
   await processStep('l', deps);
   assertEquals(state.lesson.error_message, null);
 });
+
+Deno.test('processUntilDone não começa outro passo depois do tempo limite', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 12 }, 12, ok);
+  let t = 0;
+  deps.now = () => new Date((t += 30_000));
+  await processUntilDone('l', deps, 45_000);
+  assertEquals(state.lesson.status, 'processing');
+  assertEquals(state.lesson.processed_blocks, 0);
+});

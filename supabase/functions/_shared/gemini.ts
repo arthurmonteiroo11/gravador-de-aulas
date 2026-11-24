@@ -6,6 +6,7 @@ import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
 export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-flash-latest';
 
 export class RateLimitError extends Error {}
+export const GEMINI_TIMEOUT_MS = 90_000;
 export class GeminiError extends Error {}
 
 type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string };
@@ -30,13 +31,18 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
   if (!apiKey) throw new GeminiError('GEMINI_API_KEY não configurada');
   const fetcher = opts.fetcher ?? fetch;
   const model = opts.model ?? GEMINI_MODEL;
+  // A função só pode rodar 150 s; uma resposta lenta não pode segurá-la até ser derrubada.
   const res = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.2 },
     }),
+  }).catch((e) => {
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new RateLimitError('Gemini demorou demais para responder');
+    throw e;
   });
   if (res.status === 429 || res.status === 503) throw new RateLimitError(`Gemini ocupado (${res.status})`);
   if (!res.ok) throw new GeminiError(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);

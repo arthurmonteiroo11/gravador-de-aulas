@@ -37,3 +37,12 @@ Deno.test('rewriteAndSummarize devolve reescrita e resumo', async () => {
   const fetcher = () => Promise.resolve(reply({ rewrite: '# A', summary: '- b' }));
   assertEquals(await rewriteAndSummarize('[00:00] oi', { apiKey: 'k', fetcher }), { rewrite: '# A', summary: '- b' });
 });
+
+Deno.test('Gemini que demora demais vira RateLimitError (tenta de novo depois, sem travar a função)', async () => {
+  const fetcher = () => Promise.reject(new DOMException('Signal timed out.', 'TimeoutError'));
+  await assertRejects(
+    () => transcribeBlock([{ data: new Uint8Array([1]), mimeType: 'audio/mp4' }], { apiKey: 'k', fetcher: fetcher as typeof fetch }),
+    RateLimitError,
+    'demorou',
+  );
+});

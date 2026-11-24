@@ -52,7 +52,7 @@ function depsFor(lessonId: string): StepDeps {
     transcribe: (parts) => transcribeBlock(parts),
     rewrite: (t) => rewriteAndSummarize(t),
     model: GEMINI_MODEL,
-    acquireLease: async () => Boolean(must(await db.rpc('try_lease', { p_lesson: lessonId }))),
+    acquireLease: async () => Boolean(must(await db.rpc('try_lease', { p_lesson: lessonId, p_seconds: 150 }))),
     releaseLease: async () => void must(await db.rpc('release_lease', { p_lesson: lessonId })),
     now: () => new Date(),
   };
