@@ -1,6 +1,19 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto' | 'tag' | 'chat' | 'send' | 'target' | 'bell';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto' | 'tag' | 'chat' | 'send' | 'target' | 'bell' | 'person' | 'archive';
 
 const PATHS: Record<Name, JSX.Element> = {
+  person: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5" />
+    </g>
+  ),
+  archive: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2" />
+      <path d="M5 9v9.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
+      <path d="M10 13h4" />
+    </g>
+  ),
   bell: (
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15Z" />

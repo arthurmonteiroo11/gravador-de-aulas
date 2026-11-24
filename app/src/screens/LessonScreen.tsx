@@ -18,6 +18,8 @@ import LessonActions from '../components/LessonActions';
 import { EditableList, EditableMarkdown, NotesEditor } from '../components/Editable';
 import { saveNotes, saveOutput, saveSegment } from '../lessons/study';
 import { useAutosave } from '../lessons/useAutosave';
+import { manySpeakers, speakerChanges, speakerList, speakerName } from '../lessons/speakers';
+import SpeakersSheet from '../components/SpeakersSheet';
 import type { CSSProperties } from 'react';
 
 type Tab = 'summary' | 'rewrite' | 'transcript' | 'notes';
@@ -36,6 +38,7 @@ type Props = {
 
 export default function LessonScreen({ lessonId, onBack, focus, folders = [], onReview, onPrint, onAsk, onDeleted }: Props) {
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [namingSpeakers, setNamingSpeakers] = useState(false);
   const [content, setContent] = useState<LessonContent | null>(null);
   const [tab, setTab] = useState<Tab>(focus?.tab ?? 'summary');
   const query = focus?.query ?? '';
@@ -164,6 +167,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
     </button>
   );
   if (!lesson || !content) return <section>{back}<p className="muted">Carregando…</p></section>;
+  const showWho = manySpeakers(content.segments) ? speakerChanges(content.segments) : [];
 
   const pendingText = lesson.status === 'error' ? `Erro: ${lesson.error_message ?? 'tente de novo mais tarde.'}` : `${statusLabel(lesson)}…`;
   const total = lessonLength(content.chunks);
@@ -290,6 +294,24 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
         )}
       </Panel>
       <Panel tab="transcript" active={shownTab}>
+        {manySpeakers(content.segments) && (
+          <div className="speakers-bar">
+            <span className="muted">{speakerList(content.segments).map((l) => speakerName(l, lesson.speaker_names ?? {})).join(', ')}</span>
+            <button className="pill" onClick={() => setNamingSpeakers(true)}><Icon name="person" size={16} />Nomes</button>
+          </div>
+        )}
+        {namingSpeakers && (
+          <SpeakersSheet
+            lessonId={lesson.id}
+            labels={speakerList(content.segments)}
+            names={lesson.speaker_names ?? {}}
+            onClose={() => setNamingSpeakers(false)}
+            onSaved={(names) => {
+              setLesson((l) => l && { ...l, speaker_names: names });
+              setNamingSpeakers(false);
+            }}
+          />
+        )}
         {content.segments.length ? (
           <EditableList
             items={content.segments.filter((s) => s.id != null).map((s) => ({ key: s.id!, label: formatClock(s.start_s), text: s.text }))}
@@ -298,6 +320,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
             view={
               <ol className="transcript">
                 {content.segments.map((s, i) => {
+                  const who = showWho[i] ? speakerName(s.speaker, lesson.speaker_names ?? {}) : null;
                   const focused = focusAt != null && Math.abs(s.start_s - focusAt) < 0.01;
                   return (
                     <li key={s.id ?? i}>
@@ -314,7 +337,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
                         disabled={lesson.audio_deleted}
                       >
                         <span className="t">{formatClock(s.start_s)}</span>
-                        <span><Highlight text={s.text} query={query} /></span>
+                        <span>{who && <b className="who">{who}</b>}<Highlight text={s.text} query={query} /></span>
                       </button>
                     </li>
                   );

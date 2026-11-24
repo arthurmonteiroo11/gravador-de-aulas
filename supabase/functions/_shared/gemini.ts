@@ -54,7 +54,7 @@ const SEGMENTS_SCHEMA = {
   type: 'ARRAY',
   items: {
     type: 'OBJECT',
-    properties: { part: { type: 'INTEGER' }, start: { type: 'NUMBER' }, end: { type: 'NUMBER' }, text: { type: 'STRING' } },
+    properties: { part: { type: 'INTEGER' }, start: { type: 'NUMBER' }, end: { type: 'NUMBER' }, text: { type: 'STRING' }, speaker: { type: 'STRING' } },
     required: ['part', 'start', 'end', 'text'],
   },
 };

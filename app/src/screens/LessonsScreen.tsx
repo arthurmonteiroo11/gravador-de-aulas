@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Lesson } from '../lib/types';
-import { listLessons, requestProcessing } from '../lessons/api';
+import { deleteLessons, listLessons, requestProcessing } from '../lessons/api';
 import { finalizeAbandoned } from '../lessons/recovery';
 import { formatDay, formatDuration, statusLabel } from '../lessons/format';
 import { startPoller } from '../lessons/poller';
@@ -13,6 +13,7 @@ import { dueCount } from '../lessons/flashcards';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
 import ThemeButton from '../components/ThemeButton';
+import Sheet from '../components/Sheet';
 import ExamCard from '../components/ExamCard';
 import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
 
@@ -25,6 +26,7 @@ type Props = {
   onImport?: () => void;
   onReview?: () => void;
   onFolders?: () => void;
+  onAccount?: () => void;
   onExamCards?: (subject: string, lessonIds: string[]) => void;
   onAsk?: (lessonIds: string[], title: string) => void;
 };
@@ -53,7 +55,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy, onImport, onReview, onFolders, onExamCards, onAsk }: Props) {
+export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy, onImport, onReview, onFolders, onExamCards, onAsk, onAccount }: Props) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -67,6 +69,8 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
   const [studies, setStudies] = useState<StudyNote[]>([]);
   // null: modo normal. Um conjunto: escolhendo aulas para juntar.
   const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const [combining, setCombining] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -147,7 +151,6 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
     return (!subject || ls.some((l) => l.subject === subject)) && filterLessons([{ title: n.title, subject: null }], { subject: null, query }).length > 0;
   });
 
-  const readyCount = (lessons ?? []).filter((l) => l.status === 'ready').length;
 
   const toggle = (id: string) => {
     if (!picked) return;
@@ -159,6 +162,22 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
 
   // Só contam as escolhidas que estão à vista (a busca ou o filtro podem esconder alguma).
   const chosen = picked ? shown.filter((l) => picked.has(l.id) && l.status === 'ready').map((l) => l.id) : [];
+  const toDelete = picked ? shown.filter((l) => picked.has(l.id)) : [];
+  const busySelecting = combining || deleting !== null;
+
+  const removeChosen = async () => {
+    setDeleting(0);
+    setError(null);
+    const failed = await deleteLessons(toDelete, (n) => alive.current && setDeleting(n));
+    if (!alive.current) return;
+    setDeleting(null);
+    setConfirmDelete(false);
+    void refresh();
+    if (failed.length) {
+      setPicked(new Set(failed));
+      setError(`Não deu para excluir ${failed.length === 1 ? '1 aula' : `${failed.length} aulas`}. Verifique a internet e tente de novo.`);
+    } else setPicked(null);
+  };
   const requestKey = useRef<{ ids: string; key: string } | null>(null);
   const alive = useRef(true);
   useEffect(() => {
@@ -221,13 +240,18 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
   return (
     <section className="enter">
       <div className="head">
-        <h1 className="title">{picked ? 'Juntar aulas' : 'Aulas'}</h1>
+        <h1 className="title">{picked ? 'Selecionar' : 'Aulas'}</h1>
         {!picked && <ThemeButton />}
-        {readyCount > 1 && !picked && (
+        {!picked && onAccount && (
+          <button className="theme-button account-button" onClick={onAccount} aria-label="Conta, convites e backup">
+            <Icon name="person" size={17} />
+          </button>
+        )}
+        {(lessons ?? []).length > 0 && !picked && (
           <button className="ghost" onClick={() => setPicked(new Set())}>Selecionar</button>
         )}
       </div>
-      {picked && <p className="subtitle">Escolha as aulas para virar um resumo só. O texto sai organizado por tema.</p>}
+      {picked && <p className="subtitle">Escolha aulas para juntar num resumo só, organizado por tema, ou para excluir.</p>}
 
       <div className="search">
         <Icon name="search" size={18} />
@@ -347,7 +371,7 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
                 style={tone(l.subject)}
                 data-selectable={picked ? 'true' : undefined}
                 aria-pressed={picked ? picked.has(l.id) : undefined}
-                disabled={Boolean(picked) && l.status !== 'ready'}
+                disabled={busySelecting}
               >
                 {picked && <span className="check"><Icon name="check" size={16} /></span>}
                 <span className="lesson-title"><Highlight text={l.title} query={query} /></span>
@@ -378,9 +402,12 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
 
       {picked ? (
         <div className="select-bar">
-          <button className="ghost" onClick={() => { setPicked(null); setError(null); }} disabled={combining}>Cancelar</button>
-          <button className="primary" onClick={() => void combine()} disabled={chosen.length < 2 || combining} aria-busy={combining}>
-            {combining ? 'Juntando… até 1 min' : chosen.length < 2 ? 'Escolha 2 ou mais' : `Juntar ${chosen.length} aulas`}
+          <button className="ghost" onClick={() => { setPicked(null); setError(null); }} disabled={busySelecting}>Cancelar</button>
+          <button className="ghost danger-text" onClick={() => setConfirmDelete(true)} disabled={!toDelete.length || busySelecting} aria-label={toDelete.length ? `Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}` : 'Excluir'}>
+            <Icon name="trash" size={18} />{toDelete.length > 0 && toDelete.length}
+          </button>
+          <button className="primary" onClick={() => void combine()} disabled={chosen.length < 2 || busySelecting} aria-busy={combining}>
+            {combining ? 'Juntando… até 1 min' : chosen.length < 2 ? 'Juntar: 2 ou mais' : `Juntar ${chosen.length} aulas`}
           </button>
         </div>
       ) : (
@@ -395,6 +422,21 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
             Gravar aula
           </button>
         </div>
+      )}
+      {confirmDelete && toDelete.length > 0 && (
+        <Sheet title={`Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}?`} titleId="delete-many-title" onClose={() => deleting === null && setConfirmDelete(false)}>
+          <ul className="delete-list">
+            {toDelete.slice(0, 6).map((l) => <li key={l.id}>{l.title}</li>)}
+            {toDelete.length > 6 && <li className="muted">e mais {toDelete.length - 6}</li>}
+          </ul>
+          <p className="muted hint sheet-lead">Apaga o áudio, a transcrição, os textos, as anotações e os flashcards. Não dá para desfazer.</p>
+          <div className="actions">
+            <button className="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting !== null}>Cancelar</button>
+            <button className="danger grow" onClick={() => void removeChosen()} disabled={deleting !== null}>
+              {deleting !== null ? `Excluindo ${Math.min(deleting + 1, toDelete.length)} de ${toDelete.length}…` : `Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}`}
+            </button>
+          </div>
+        </Sheet>
       )}
     </section>
   );

@@ -11,6 +11,8 @@ import ReviewScreen from './screens/ReviewScreen';
 import PrintScreen from './screens/PrintScreen';
 import FoldersScreen from './screens/FoldersScreen';
 import AskScreen from './screens/AskScreen';
+import AccountScreen from './screens/AccountScreen';
+import { normalizeCode } from './lib/invites';
 
 type View =
   | { name: 'list' }
@@ -21,13 +23,18 @@ type View =
   | { name: 'folders' }
   | { name: 'review'; lessonId?: string; lessonIds?: string[]; title: string; back: View }
   | { name: 'ask'; lessonIds: string[]; title: string; back: View }
-  | { name: 'print'; id: string; back: View };
+  | { name: 'print'; id: string; back: View }
+  | { name: 'account' };
 
 // Tocar no aviso de revisão abre o app em /?revisar=1: vai direto para os cartões.
 let openReviewOnStart = new URLSearchParams(window.location.search).get('revisar') === '1';
 if (openReviewOnStart) window.history.replaceState(null, '', '/');
 
-function SignedIn({ userId }: { userId: string }) {
+// Link de convite (/?convite=CODIGO): abre a tela de criar conta já com o código.
+const inviteOnStart = normalizeCode(new URLSearchParams(window.location.search).get('convite') ?? '');
+if (new URLSearchParams(window.location.search).has('convite')) window.history.replaceState(null, '', '/');
+
+function SignedIn({ userId, email }: { userId: string; email: string }) {
   const [view, setView] = useState<View>(() =>
     openReviewOnStart ? { name: 'review', title: 'Revisar', back: { name: 'list' } } : { name: 'list' },
   );
@@ -99,8 +106,12 @@ function SignedIn({ userId }: { userId: string }) {
   if (view.name === 'study') {
     return <StudyScreen key={view.id} id={view.id} onBack={list} onOpenLesson={(id) => setView({ name: 'lesson', id, from: view.id })} />;
   }
+  if (view.name === 'account') {
+    return <AccountScreen email={email} onBack={list} />;
+  }
   return (
     <LessonsScreen
+      onAccount={() => setView({ name: 'account' })}
       onRecord={() => setView({ name: 'record' })}
       onOpen={(id, focus) => setView({ name: 'lesson', id, focus })}
       onSubjects={setSubjects}
@@ -121,9 +132,9 @@ export default function App() {
       {state.loading ? (
         <p className="muted">Carregando…</p>
       ) : state.session ? (
-        <SignedIn userId={state.session.user.id} />
+        <SignedIn userId={state.session.user.id} email={state.session.user.email ?? ''} />
       ) : (
-        <LoginScreen />
+        <LoginScreen inviteCode={inviteOnStart} />
       )}
     </main>
   );

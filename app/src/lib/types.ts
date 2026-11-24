@@ -15,6 +15,7 @@ export type Lesson = {
   audio_deleted: boolean;
   expected_chunks?: number | null;
   notes?: string;
+  speaker_names?: Record<string, string> | null;
 };
 
 export type AudioChunk = {

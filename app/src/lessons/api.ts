@@ -56,3 +56,23 @@ export async function deleteLesson(lesson: Pick<Lesson, 'id' | 'user_id'>): Prom
   const { error } = await supabase.from('lessons').delete().eq('id', lesson.id);
   if (error) throw error;
 }
+
+/** Apaga várias aulas, uma de cada vez; as que falharem voltam na lista para tentar de novo. */
+export async function deleteLessons(
+  lessons: Pick<Lesson, 'id' | 'user_id' | 'title'>[],
+  onProgress: (done: number) => void = () => {},
+): Promise<string[]> {
+  const { pendingKeys, removeChunk } = await import('../storage/localQueue');
+  const failed: string[] = [];
+  for (let i = 0; i < lessons.length; i++) {
+    onProgress(i);
+    try {
+      await deleteLesson(lessons[i]);
+      for (const c of await pendingKeys(lessons[i].id).catch(() => [])) await removeChunk(lessons[i].id, c.idx).catch(() => {});
+    } catch {
+      failed.push(lessons[i].id);
+    }
+  }
+  onProgress(lessons.length);
+  return failed;
+}

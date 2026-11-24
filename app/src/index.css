@@ -633,3 +633,57 @@ textarea::placeholder { color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
 }
+
+/* Conta: convites e backup */
+.account-button { padding: 6px 10px; }
+.panel {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 18px 0 0;
+  padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line);
+}
+.panel > :not(.panel-icon) { grid-column: 2; }
+.panel-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; align-self: start; grid-row: 1 / span 2; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.panel-text { display: grid; gap: 3px; }
+.panel-text strong { font-weight: 600; font-size: 1.05rem; }
+.panel-text small, .panel-check small { color: var(--muted); font-size: 0.88rem; line-height: 1.45; text-wrap: pretty; }
+.panel-buttons { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.panel-note { margin-top: 8px; font-size: 0.9rem; text-wrap: pretty; }
+.panel-ok { color: color-mix(in srgb, #1f9d55 80%, var(--ink)); }
+.panel-error { color: var(--rec); }
+.invite-fresh {
+  margin-top: 12px; padding: 14px; border-radius: 14px; display: grid; gap: 4px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--paper)); border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.invite-code { font-size: 1.55rem; font-weight: 600; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.invite-link { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
+.invite-fresh .panel-buttons { margin-top: 8px; }
+.panel-buttons button { white-space: nowrap; }
+.invite-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; }
+.invite-list li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; padding: 10px 0;
+  border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; font-weight: 500;
+}
+.invite-list li > span:first-child { display: grid; gap: 1px; white-space: nowrap; }
+.invite-list li small { color: var(--muted); font-weight: 400; font-size: 0.82rem; }
+.invite-list li .panel-buttons { margin: 0 -10px 0 0; flex-wrap: nowrap; gap: 0; }
+.invite-list li .panel-buttons .pill { padding: 6px 14px; min-height: 36px; }
+.invite-list li > svg { color: #1f9d55; }
+.panel-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-weight: 500; cursor: pointer; }
+.panel-check span { display: grid; gap: 2px; }
+.panel-check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.panel-progress { display: grid; gap: 4px; margin-top: 12px; }
+.panel-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.panel-progress small { color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-out { margin-top: 28px; justify-content: center; }
+.login-switch { justify-content: center; margin-top: 4px; }
+.app:has(.account) { max-width: 640px; }
+
+/* Quem fala */
+.speakers-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 10px; font-size: 0.88rem; }
+.speakers-bar .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.speakers-bar .pill { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.segment .who { display: block; font-family: var(--ui); font-size: 0.78rem; font-weight: 600; color: var(--accent); margin-bottom: 1px; }
+.speaker-fields { display: grid; gap: 10px; margin: 6px 0 14px; }
+.speaker-field { display: grid; grid-template-columns: 6.5em 1fr; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--muted); }
+.speaker-field input { margin: 0; }
+.select-bar .danger-text { display: inline-flex; align-items: center; gap: 4px; padding: 0 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.delete-list { margin: 4px 0 10px; padding-left: 1.2em; display: grid; gap: 4px; font-weight: 500; }

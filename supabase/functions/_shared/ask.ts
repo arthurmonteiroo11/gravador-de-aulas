@@ -1,7 +1,7 @@
 import { ASK_PROMPT } from './prompts.ts';
-import { clock } from './blocks.ts';
+import { clock, manySpeakers } from './blocks.ts';
 
-export type AskLesson = { id: string; title: string; recorded_at: string; segments: { start_s: number; text: string }[] };
+export type AskLesson = { id: string; title: string; recorded_at: string; segments: { start_s: number; text: string; speaker?: string | null }[] };
 export type AskTurn = { q: string; a: string };
 export type AskSource = { n: number; lessonId: string; title: string; startS: number; quote: string };
 export type AskAnswer = { answer: string; sources: AskSource[] };
@@ -25,7 +25,8 @@ export function askMaterial(lessons: AskLesson[], cap = MAX_ASK_CHARS): string {
   const budget = Math.floor(cap / Math.max(1, lessons.length));
   return lessons.map((l, i) => {
     const label = `A${i + 1}`;
-    const all = l.segments.map((s) => `[${label} ${clock(s.start_s)}] ${s.text}`);
+    const who = manySpeakers(l.segments);
+    const all = l.segments.map((s) => `[${label} ${clock(s.start_s)}] ${who && s.speaker ? `${s.speaker}: ` : ''}${s.text}`);
     const size = all.reduce((t, line) => t + line.length + 1, 0);
     let lines = all;
     if (size > budget) {

@@ -3,9 +3,10 @@ import { processUntilDone, type StepDeps } from '../_shared/processStep.ts';
 import { askAboutLessons, combineTexts, GEMINI_MODEL, GeminiTimeoutError, makeFlashcards, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
 import { flashcardsPrompt } from '../_shared/flashcards.ts';
 import { combinePrompt, fallbackTitle, MAX_LESSONS, type CombineSource } from '../_shared/combine.ts';
-import type { LessonRow } from '../_shared/types.ts';
+import type { AudioChunk, LessonRow } from '../_shared/types.ts';
 import { contextNote } from '../_shared/context.ts';
 import { generateVapidKeys, reminderMessage, sendPush, type VapidKeys } from '../_shared/webpush.ts';
+import { ownsPath, parseSignup, redeem } from '../_shared/invite.ts';
 import { askPrompt, cleanAnswer, MAX_ASK_LESSONS, MAX_QUESTION_CHARS, type AskLesson, type AskTurn } from '../_shared/ask.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
@@ -52,7 +53,13 @@ function depsFor(lessonId: string): StepDeps {
   return {
     getLesson: async (id) => must(await db.from('lessons').select('*').eq('id', id).single()) as LessonRow,
     updateLesson: async (patch) => void must(await db.from('lessons').update(patch).eq('id', lessonId)),
-    listChunks: async () => must(await db.from('audio_chunks').select('*').eq('lesson_id', lessonId).order('idx')) ?? [],
+    // Só lê áudio da pasta da própria aula: uma linha que aponte para outro arquivo é recusada.
+    listChunks: async () => {
+      const owner = must(await db.from('lessons').select('user_id').eq('id', lessonId).single()) as { user_id: string };
+      const chunks = (must(await db.from('audio_chunks').select('*').eq('lesson_id', lessonId).order('idx')) ?? []) as AudioChunk[];
+      if (chunks.some((c) => !ownsPath(c.path, owner.user_id, lessonId))) throw new Error('parte de áudio fora da pasta da aula');
+      return chunks;
+    },
     download: async (path) => {
       const { data, error } = await db.storage.from('audio').download(path);
       if (error) throw error;
@@ -136,19 +143,22 @@ async function combine(req: Request, ids: unknown, requestKey: unknown): Promise
 /** Transcrição inteira de uma aula, em páginas: o banco entrega no máximo 1000 linhas por vez. */
 type Db = ReturnType<typeof createClient<any>>;
 
-async function segmentsOf(db: Db, lessonId: string): Promise<{ start_s: number; text: string }[]> {
+type SegmentText = { start_s: number; text: string; speaker: string | null };
+
+async function segmentsOf(db: Db, lessonId: string, names: Record<string, string> = {}): Promise<SegmentText[]> {
   const page = 1000;
-  const out: { start_s: number; text: string }[] = [];
+  const out: SegmentText[] = [];
   for (let from = 0; from < 20_000; from += page) {
     const { data, error } = await db
       .from('transcript_segments')
-      .select('start_s, text')
+      .select('start_s, text, speaker')
       .eq('lesson_id', lessonId)
       .order('start_s')
       .order('id')
       .range(from, from + page - 1);
     if (error) throw error;
-    out.push(...((data ?? []) as { start_s: number; text: string }[]));
+    // Nomes que a pessoa deu na aula ("Falante 1" virou "Ana") entram no lugar do rótulo.
+    for (const s of (data ?? []) as SegmentText[]) out.push({ ...s, speaker: s.speaker ? (names[s.speaker]?.trim() || s.speaker) : null });
     if ((data ?? []).length < page) break;
   }
   return out;
@@ -172,12 +182,15 @@ async function ask(req: Request, ids: unknown, question: unknown, history: unkno
     .map((t) => ({ q: t.q, a: t.a }));
   const db = createClient(URL_, ANON_KEY, { global: { headers: { authorization: auth } } });
 
-  const { data: rows, error } = await db.from('lessons').select('id, title, recorded_at').in('id', ids);
+  const { data: rows, error } = await db.from('lessons').select('id, title, recorded_at, speaker_names').in('id', ids);
   if (error) throw error;
   if ((rows ?? []).length !== ids.length) return json({ error: 'Aula não encontrada.' }, 404);
   const ordered = [...rows!].sort((a, b) => String(a.recorded_at).localeCompare(String(b.recorded_at)));
   const lessons: AskLesson[] = [];
-  for (const l of ordered) lessons.push({ ...(l as Omit<AskLesson, 'segments'>), segments: await segmentsOf(db, l.id) });
+  for (const l of ordered) {
+    const { speaker_names: names, ...rest } = l as Omit<AskLesson, 'segments'> & { speaker_names?: Record<string, string> | null };
+    lessons.push({ ...rest, segments: await segmentsOf(db, l.id, names ?? {}) });
+  }
   if (!lessons.some((l) => l.segments.length)) return json({ error: 'Estas aulas ainda não têm transcrição.' }, 409);
 
   const answer = cleanAnswer(await askAboutLessons(askPrompt(lessons, q, turns)), lessons);
@@ -298,6 +311,33 @@ async function testPush(req: Request): Promise<Response> {
   return json(r);
 }
 
+/** Convite: cria a conta da pessoa convidada. Não precisa de login; o código é a autorização. */
+async function signup(body: unknown): Promise<Response> {
+  const input = parseSignup(body);
+  if (typeof input === 'string') return json({ error: input }, 400);
+  const db = createClient(URL_, SERVICE_KEY, { auth: { persistSession: false } });
+  const result = await redeem(input, {
+    claim: async (code) => {
+      const { data, error } = await db.from('invites').update({ used_at: new Date().toISOString() })
+        .eq('code', code).is('used_at', null).gt('expires_at', new Date().toISOString())
+        .select('created_by').maybeSingle();
+      if (error) throw error;
+      return (data?.created_by as string | undefined) ?? null;
+    },
+    release: async (code) => void (await db.from('invites').update({ used_at: null }).eq('code', code).is('used_by', null)),
+    createUser: async (email, password) => {
+      const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
+      return error || !data.user ? { error: error?.message ?? 'sem resposta' } : { id: data.user.id };
+    },
+    addMember: async (userId, invitedBy) => {
+      const { error } = await db.from('members').upsert({ user_id: userId, invited_by: invitedBy });
+      if (error) throw error;
+    },
+    markUsedBy: async (code, userId) => void (await db.from('invites').update({ used_by: userId }).eq('code', code)),
+  });
+  return result.ok ? json({ ok: true }) : json({ error: result.error }, result.status);
+}
+
 /** Frase curta para a tela: o detalhe técnico fica no log da função. */
 function aiErrorText(e: unknown, action: string): string {
   if (e instanceof QuotaError) return e.message;
@@ -320,6 +360,14 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error(e);
       return json({ error: aiErrorText(e, 'criar os flashcards') }, 500);
+    }
+  }
+  if (body?.signup !== undefined) {
+    try {
+      return await signup(body.signup);
+    } catch (e) {
+      console.error(e);
+      return json({ error: 'Não deu para criar a conta agora. Tente de novo em instantes.' }, 500);
     }
   }
   if (body?.pushKey === true) {

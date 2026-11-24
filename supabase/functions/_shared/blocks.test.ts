@@ -1,5 +1,5 @@
 import { assertEquals } from 'jsr:@std/assert@1';
-import { groupIntoBlocks, toAbsoluteSegments, BLOCK_SIZE } from './blocks.ts';
+import { groupIntoBlocks, toAbsoluteSegments, transcriptText, BLOCK_SIZE } from './blocks.ts';
 import type { AudioChunk } from './types.ts';
 
 const chunk = (idx: number, start_s = idx * 60): AudioChunk => ({
@@ -38,4 +38,16 @@ Deno.test('descarta part inválido e texto vazio, ordena por tempo', () => {
 Deno.test('tempo além da parte é limitado à duração dela', () => {
   const out = toAbsoluteSegments([chunk(0)], [{ part: 0, start: 58, end: 75, text: 'x' }]);
   assertEquals(out[0].end_s, 60);
+});
+
+Deno.test('quem fala: rótulo limpo e só aparece no texto quando há mais de uma pessoa', () => {
+  const block = [{ lesson_id: 'l', idx: 0, start_s: 0, duration_s: 60, path: 'u/l/0.m4a', mime_type: 'audio/mp4' }];
+  const segs = toAbsoluteSegments(block, [
+    { part: 0, start: 1, end: 4, text: 'Então, quem começa?', speaker: ' Professor ' },
+    { part: 0, start: 5, end: 9, text: 'Eu acho que não.', speaker: 'Aluno 1' },
+    { part: 0, start: 10, end: 12, text: 'Sem rótulo', speaker: '' },
+  ]);
+  assertEquals(segs.map((s) => s.speaker), ['Professor', 'Aluno 1', null]);
+  assertEquals(transcriptText(segs).split('\n')[1], '[00:05] Aluno 1: Eu acho que não.');
+  assertEquals(transcriptText(segs.slice(0, 1)), '[00:01] Então, quem começa?');
 });

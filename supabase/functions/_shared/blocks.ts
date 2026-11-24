@@ -18,10 +18,21 @@ export function toAbsoluteSegments(block: AudioChunk[], segs: ModelSegment[]): S
     const text = s.text?.trim();
     if (!chunk || !text) continue;
     const clamp = (t: number) => Math.min(Math.max(0, t), chunk.duration_s);
-    out.push({ start_s: chunk.start_s + clamp(s.start), end_s: chunk.start_s + clamp(s.end), text, speaker: null });
+    out.push({ start_s: chunk.start_s + clamp(s.start), end_s: chunk.start_s + clamp(s.end), text, speaker: cleanSpeaker(s.speaker) });
   }
   return out.sort((a, b) => a.start_s - b.start_s);
 }
+
+/** Rótulo de quem fala, curto e sem sujeira; vazio vira null. */
+export function cleanSpeaker(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.replace(/\s+/g, ' ').trim().slice(0, 40);
+  return s || null;
+}
+
+/** Só vale marcar quem fala quando há mais de uma pessoa: numa aula só do professor, economiza texto. */
+export const manySpeakers = (segments: { speaker?: string | null }[]) =>
+  new Set(segments.map((s) => s.speaker).filter(Boolean)).size > 1;
 
 /** Tempo como no app: mm:ss, ou h:mm:ss a partir de 1 hora. */
 export function clock(t: number): string {
@@ -34,5 +45,6 @@ export function clock(t: number): string {
 
 /** Texto corrido com marcação de tempo, usado para a reescrita. */
 export function transcriptText(segments: Segment[]): string {
-  return segments.map((s) => `[${clock(s.start_s)}] ${s.text}`).join('\n');
+  const who = manySpeakers(segments);
+  return segments.map((s) => `[${clock(s.start_s)}] ${who && s.speaker ? `${s.speaker}: ` : ''}${s.text}`).join('\n');
 }

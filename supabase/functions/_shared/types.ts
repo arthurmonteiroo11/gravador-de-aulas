@@ -14,5 +14,5 @@ export type LessonRow = {
 };
 export type AudioChunk = { lesson_id: string; idx: number; start_s: number; duration_s: number; path: string; mime_type: string };
 export type Segment = { start_s: number; end_s: number; text: string; speaker: string | null };
-export type ModelSegment = { part: number; start: number; end: number; text: string };
+export type ModelSegment = { part: number; start: number; end: number; text: string; speaker?: string | null };
 export type AudioPart = { data: Uint8Array; mimeType: string };
