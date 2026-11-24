@@ -1,8 +1,8 @@
 -- Jobs agendados. Precisam de dois segredos no Vault (Project Settings > Vault):
 --   project_url  = https://SEU-PROJETO.supabase.co
 --   cron_secret  = o mesmo valor do segredo CRON_SECRET das Edge Functions
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+create extension if not exists pg_cron with schema pg_catalog;
+create extension if not exists pg_net with schema extensions;
 
 create or replace function public.call_function(fn text, body jsonb)
 returns void
