@@ -8,6 +8,10 @@
     <meta name="apple-mobile-web-app-title" content="Aulas" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <script>
+      // Aplica o tema escolhido antes de desenhar a tela, sem piscar.
+      try { var t = localStorage.getItem('tema'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
     <title>Gravador de Aulas</title>
   </head>
   <body>

@@ -1,6 +1,19 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more' | 'sun' | 'moon' | 'auto';
 
 const PATHS: Record<Name, JSX.Element> = {
+  sun: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+    </g>
+  ),
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
+  auto: (
+    <g>
+      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+    </g>
+  ),
   play: <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor" />,
   pause: <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" />,

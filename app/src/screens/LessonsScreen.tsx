@@ -12,6 +12,7 @@ import { listFolders, mergeFolders } from '../lessons/folders';
 import { dueCount } from '../lessons/flashcards';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
+import ThemeButton from '../components/ThemeButton';
 import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
 
 export type OpenFocus = { query?: string; startS?: number | null; tab?: 'summary' | 'rewrite' | 'transcript' | 'notes' };
@@ -180,6 +181,7 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
     <section className="enter">
       <div className="head">
         <h1 className="title">{picked ? 'Juntar aulas' : 'Aulas'}</h1>
+        {!picked && <ThemeButton />}
         {readyCount > 1 && !picked && (
           <button className="ghost" onClick={() => setPicked(new Set())}>Selecionar</button>
         )}
