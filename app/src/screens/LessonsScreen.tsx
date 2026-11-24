@@ -6,6 +6,7 @@ import { formatDuration, statusLabel } from '../lessons/format';
 import { startPoller } from '../lessons/poller';
 import { retryLesson } from '../lessons/retry';
 import { describeLoadError } from '../lessons/errors';
+import { errorText, recordProblem } from '../lib/diagnostics';
 
 type Props = { onRecord: () => void; onOpen: (id: string) => void };
 
@@ -35,8 +36,10 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
       for (const l of pending) {
         try {
           await requestProcessing(l.id);
-        } catch {
-          /* tenta de novo no próximo ciclo */
+          recordProblem('processing', null);
+        } catch (err) {
+          // Tenta de novo no próximo ciclo; o erro aparece na tela da aula.
+          recordProblem('processing', await errorText(err));
         }
       }
       if (pending.length) await refresh();

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import type { Lesson } from '../lib/types';
-import { getLesson } from '../lessons/api';
+import { getLesson, requestProcessing } from '../lessons/api';
+import { listPending } from '../storage/localQueue';
+import { errorText, lastProblems, recordProblem } from '../lib/diagnostics';
+import PipelineStatus from '../components/PipelineStatus';
 import { loadLessonContent, signedUrls, type LessonContent } from '../lessons/content';
 import { locate } from '../lessons/playback';
 import { formatClock, formatDuration, statusLabel } from '../lessons/format';
@@ -14,6 +17,8 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
   const [content, setContent] = useState<LessonContent | null>(null);
   const [tab, setTab] = useState<Tab>('summary');
   const [urls, setUrls] = useState<Map<number, string>>(new Map());
+  const [onDevice, setOnDevice] = useState(0);
+  const [problems, setProblems] = useState(lastProblems());
   const audio = useRef<HTMLAudioElement>(null);
   const playingIdx = useRef<number | null>(null);
   const done = useRef(false);
@@ -22,8 +27,20 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
     let alive = true;
     const load = async () => {
       const l = await getLesson(lessonId);
+      // Enquanto esta tela está aberta, ela mesma empurra o processamento.
+      if (l.status === 'uploading' || l.status === 'processing') {
+        try {
+          await requestProcessing(lessonId);
+          recordProblem('processing', null);
+        } catch (err) {
+          recordProblem('processing', await errorText(err));
+        }
+      }
       const c = await loadLessonContent(lessonId);
+      const pending = await listPending(lessonId).catch(() => []);
       if (!alive) return;
+      setOnDevice(pending.length);
+      setProblems(lastProblems());
       done.current = l.status === 'ready' || l.status === 'error';
       setLesson(l);
       setContent(c);
@@ -83,6 +100,16 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
           <audio ref={audio} controls onEnded={playNext} style={{ width: '100%' }} />
           {content.chunks.length > 0 && <button onClick={() => playAt(0)}>Ouvir do início</button>}
         </p>
+      )}
+
+      {(lesson.status === 'uploading' || lesson.status === 'processing') && (
+        <PipelineStatus
+          onDevice={onDevice}
+          onServer={content.chunks.length}
+          expected={lesson.expected_chunks}
+          uploadError={problems.upload}
+          processingError={problems.processing}
+        />
       )}
 
       {lesson.status === 'ready' && lesson.error_message && <p className="notice">{lesson.error_message}</p>}

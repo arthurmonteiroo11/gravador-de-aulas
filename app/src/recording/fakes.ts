@@ -41,6 +41,9 @@ export class FakeTrack extends EventTarget {
   mute() {
     this.dispatchEvent(new Event('mute'));
   }
+  unmute() {
+    this.dispatchEvent(new Event('unmute'));
+  }
 }
 
 export function fakeStream(track = new FakeTrack()): MediaStream {

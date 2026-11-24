@@ -1,5 +1,10 @@
 export type RecordedChunk = { idx: number; blob: Blob; startS: number; durationS: number };
 export type RecorderState = 'idle' | 'recording' | 'paused' | 'stopped';
+/** Por que a gravação pausou: pedido da pessoa, microfone encerrado/silenciado ou gravador parado pelo sistema. */
+export type PauseReason = 'user' | 'ended' | 'mute' | 'recorder-stopped';
+
+/** O iOS silencia o microfone por instantes ao trocar o áudio; só pausa se o silêncio durar isso. */
+export const MUTE_GRACE_MS = 1_500;
 
 type Options = {
   chunkMs?: number;
@@ -33,6 +38,8 @@ type Segment = { recorder: MediaRecorder; startedAt: number; done: Promise<void>
  */
 export class ChunkRecorder {
   state: RecorderState = 'idle';
+  pauseReason: PauseReason | null = null;
+  private muteTimer: ReturnType<typeof setTimeout> | null = null;
   private segment: Segment | null = null;
   private accumulatedMs = 0;
   private nextIdx = 0;
@@ -67,9 +74,11 @@ export class ChunkRecorder {
     this.startSegment();
   }
 
-  async pause(): Promise<void> {
+  async pause(reason: PauseReason = 'user'): Promise<void> {
     if (this.state !== 'recording') return;
     this.state = 'paused';
+    this.pauseReason = reason;
+    this.clearMuteTimer();
     await this.finishSegment();
   }
 
@@ -77,6 +86,7 @@ export class ChunkRecorder {
     if (this.state !== 'paused') return;
     this.stream = stream;
     this.state = 'recording';
+    this.pauseReason = null;
     this.startSegment();
   }
 
@@ -117,7 +127,10 @@ export class ChunkRecorder {
       if (this.timer) clearTimeout(this.timer);
       this.timer = null;
       // Parada que ninguém pediu (o sistema encerrou o gravador): vira pausa.
-      if (!segment.requested && this.state === 'recording') this.state = 'paused';
+      if (!segment.requested && this.state === 'recording') {
+        this.state = 'paused';
+        this.pauseReason = 'recorder-stopped';
+      }
     }
     const blob = new Blob(parts, { type: parts[0]?.type || segment.recorder.mimeType || PREFERRED_MIME });
     if (blob.size === 0) return;
@@ -144,9 +157,24 @@ export class ChunkRecorder {
     for (const track of stream.getAudioTracks()) {
       if (this.watched.has(track)) continue;
       this.watched.add(track);
-      const interrupt = () => void this.pause();
-      track.addEventListener('ended', interrupt);
-      track.addEventListener('mute', interrupt);
+      // Só vale para o microfone em uso: o antigo, de antes da pausa, ainda pode disparar eventos.
+      const isCurrent = () => this.stream.getAudioTracks().includes(track);
+      track.addEventListener('ended', () => {
+        if (isCurrent()) void this.pause('ended');
+      });
+      track.addEventListener('mute', () => {
+        if (!isCurrent() || this.muteTimer) return;
+        this.muteTimer = setTimeout(() => {
+          this.muteTimer = null;
+          if (isCurrent()) void this.pause('mute');
+        }, MUTE_GRACE_MS);
+      });
+      track.addEventListener('unmute', () => this.clearMuteTimer());
     }
+  }
+
+  private clearMuteTimer(): void {
+    if (this.muteTimer) clearTimeout(this.muteTimer);
+    this.muteTimer = null;
   }
 }

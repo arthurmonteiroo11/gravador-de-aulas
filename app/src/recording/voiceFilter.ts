@@ -36,15 +36,17 @@ export async function getVoiceStream(opts: { voiceFilter: boolean }): Promise<Me
   const out = dest.stream;
 
   // Ligação, Siri ou outro app usando o áudio: avisa pela trilha filtrada para o gravador pausar.
-  const signal = (type: 'ended' | 'mute') => {
+  const signal = (type: 'ended' | 'mute' | 'unmute') => {
     for (const t of out.getAudioTracks()) t.dispatchEvent(new Event(type));
   };
   for (const micTrack of mic.getAudioTracks()) {
     micTrack.addEventListener('ended', () => signal('ended'));
     micTrack.addEventListener('mute', () => signal('mute'));
+    micTrack.addEventListener('unmute', () => signal('unmute'));
   }
   ctx.onstatechange = () => {
-    if (ctx.state !== 'running' && ctx.state !== 'closed') signal('mute');
+    if (ctx.state === 'running') signal('unmute');
+    else if (ctx.state !== 'closed') signal('mute');
   };
   cleanups.set(out, () => {
     ctx.onstatechange = null;

@@ -13,6 +13,7 @@ export type Lesson = {
   error_message: string | null;
   audio_expires_at: string;
   audio_deleted: boolean;
+  expected_chunks?: number | null;
 };
 
 export type AudioChunk = {

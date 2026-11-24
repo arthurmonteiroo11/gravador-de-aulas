@@ -11,10 +11,18 @@ import { appUpdater } from '../lib/appUpdate';
 
 export const LIMIT_S = 5400; // 1h30
 
+const SYSTEM_PAUSE: Record<string, string> = {
+  ended: 'O iPhone desligou o microfone. ',
+  mute: 'O iPhone silenciou o microfone. ',
+  'recorder-stopped': 'O iPhone parou o gravador. ',
+};
+const pausedBySystem = (reason: string | null | undefined) => (reason ? SYSTEM_PAUSE[reason] ?? '' : '');
+
 type RecorderLike = {
   state: string;
   recordedS: number;
   chunkCount: number;
+  pauseReason?: string | null;
   start(): void;
   pause(): Promise<void>;
   resume(stream: MediaStream): void;
@@ -201,7 +209,11 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
           Este iPhone não deixou o app manter a tela acesa. Em Ajustes &gt; Tela e Brilho &gt; Bloqueio Automático, escolha Nunca durante a aula.
         </p>
       )}
-      {phase === 'paused' && <p className="notice">Gravação pausada — toque em Continuar para seguir na mesma aula.</p>}
+      {phase === 'paused' && (
+        <p className="notice">
+          {pausedBySystem(rec.current?.pauseReason)}Gravação pausada. Toque em Continuar para seguir na mesma aula.
+        </p>
+      )}
       {phase === 'limit' && (
         <div className="notice" role="alertdialog">
           <p>Já são 1h30. Encerrar a gravação?</p>

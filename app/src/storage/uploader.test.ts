@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { putChunk, listPending, removeChunk } from './localQueue';
 import { uploadPending, chunkPath } from './uploader';
+import { lastProblems } from '../lib/diagnostics';
 
 const fakeClient = (opts: { uploadError?: boolean; upsertError?: boolean } = {}) => {
   const upload = vi.fn().mockResolvedValue({ error: opts.uploadError ? { message: 'rede' } : null });
@@ -32,6 +33,7 @@ describe('uploadPending', () => {
     const { client } = fakeClient({ uploadError: true });
     expect(await uploadPending('u1', client as never)).toEqual({ uploaded: 0, failed: 1 });
     expect(await listPending()).toHaveLength(1);
+    expect(lastProblems().upload).toBe('rede');
   });
 
   it('nunca remove antes de gravar a linha', async () => {

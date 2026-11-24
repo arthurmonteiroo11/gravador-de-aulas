@@ -127,9 +127,36 @@ describe('ChunkRecorder — interrupções do sistema', () => {
     rec.start();
     await vi.advanceTimersByTimeAsync(15_000);
     track.mute();
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(rec.state).toBe('paused');
-    expect(chunks[0]).toMatchObject({ idx: 0, durationS: 15 });
+    expect(rec.pauseReason).toBe('mute');
+    expect(chunks[0]).toMatchObject({ idx: 0, durationS: 16.5 });
+  });
+
+  it('silêncio rápido do iOS (mute e unmute logo em seguida) não pausa', async () => {
+    const track = new FakeTrack();
+    const { rec } = make(fakeStream(track));
+    rec.start();
+    await vi.advanceTimersByTimeAsync(5_000);
+    track.mute();
+    await vi.advanceTimersByTimeAsync(300);
+    track.unmute();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(rec.state).toBe('recording');
+  });
+
+  it('evento do microfone antigo não pausa a gravação retomada', async () => {
+    const oldTrack = new FakeTrack();
+    const { rec } = make(fakeStream(oldTrack));
+    rec.start();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await rec.pause();
+    rec.resume(fakeStream(new FakeTrack()));
+    oldTrack.end();
+    oldTrack.mute();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(rec.state).toBe('recording');
+    expect(rec.recordedS).toBe(8);
   });
 
   it('parte vazia não é emitida nem contada', async () => {

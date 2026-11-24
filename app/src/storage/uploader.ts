@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { listPending, removeChunk } from './localQueue';
+import { errorText, recordProblem } from '../lib/diagnostics';
 
 type Client = Pick<typeof supabase, 'storage' | 'from'>;
 
@@ -24,10 +25,12 @@ export async function uploadPending(userId: string, client: Client = supabase): 
       if (row.error) throw row.error;
       await removeChunk(chunk.lessonId, chunk.idx);
       uploaded++;
-    } catch {
+    } catch (err) {
       failed++;
+      recordProblem('upload', await errorText(err));
     }
   }
+  if (uploaded > 0 && failed === 0) recordProblem('upload', null);
   return { uploaded, failed };
 }
 
