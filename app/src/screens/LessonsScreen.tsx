@@ -286,6 +286,12 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
 
       {(subjects.length > 0 || onFolders) && (
         <div className="chips" role="group" aria-label="Filtrar por matéria">
+          {onFolders && !picked && (
+            <button className="chip chip-quiet" onClick={onFolders}>
+              <Icon name="folder" size={15} />
+              Editar pastas
+            </button>
+          )}
           <button className="chip" aria-pressed={subject === null} onClick={() => setSubject(null)}>Todas</button>
           {subjects.map((s) => (
             <button key={s} className="chip" aria-pressed={subject === s} onClick={() => setSubject(subject === s ? null : s)} style={tone(s)}>
@@ -293,12 +299,6 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
               {s}
             </button>
           ))}
-          {onFolders && !picked && (
-            <button className="chip chip-quiet" onClick={onFolders}>
-              <Icon name="folder" size={15} />
-              Pastas
-            </button>
-          )}
         </div>
       )}
 

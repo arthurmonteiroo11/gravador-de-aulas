@@ -8,7 +8,7 @@ import Sheet from '../components/Sheet';
 
 type Props = { onBack: () => void; onChanged?: (folders: string[]) => void };
 
-/** Pastas de matérias: criar, renomear, apagar e dar os termos da matéria. As aulas acompanham a pasta. */
+/** Pastas de matérias: criar, renomear, excluir e dar os termos da matéria. As aulas acompanham a pasta. */
 export default function FoldersScreen({ onBack, onChanged }: Props) {
   const [saved, setSaved] = useState<Subject[]>([]);
   const [termsOf, setTermsOf] = useState<string | null>(null);
@@ -30,12 +30,6 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
     load().catch(() => setError('Não deu para abrir as pastas. Verifique a internet.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!confirming) return;
-    const timer = setTimeout(() => setConfirming(null), 5000);
-    return () => clearTimeout(timer);
-  }, [confirming]);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -123,14 +117,8 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
                     <button className="icon-button" aria-label={`Renomear ${f}`} onClick={() => setRenaming({ from: f, to: f })} disabled={busy}>
                       <Icon name="edit" size={18} />
                     </button>
-                    <button
-                      className="icon-button danger-text"
-                      data-confirm={confirming === f}
-                      aria-label={confirming === f ? `Toque de novo para apagar ${f}` : `Apagar ${f}`}
-                      onClick={() => (confirming === f ? void run(async () => { await deleteFolder(f); setConfirming(null); }) : setConfirming(f))}
-                      disabled={busy}
-                    >
-                      {confirming === f ? 'Apagar?' : <Icon name="trash" size={18} />}
+                    <button className="icon-button danger-text" aria-label={`Excluir a pasta ${f}`} onClick={() => setConfirming(f)} disabled={busy}>
+                      <Icon name="trash" size={18} />
                     </button>
                   </span>
                 </>
@@ -140,10 +128,30 @@ export default function FoldersScreen({ onBack, onChanged }: Props) {
         </ul>
         {folders.length > 0 && (
           <p className="muted hint">
-            Apagar uma pasta não apaga as aulas: elas ficam sem matéria.{loose ? ` Hoje ${loose === 1 ? '1 aula está' : `${loose} aulas estão`} sem matéria.` : ''}
+            Para excluir uma pasta, toque na lixeira ao lado dela. As aulas não são apagadas: ficam sem matéria.{loose ? ` Hoje ${loose === 1 ? '1 aula está' : `${loose} aulas estão`} sem matéria.` : ''}
           </p>
         )}
       </div>
+      {confirming && (
+        <Sheet title={`Excluir a pasta ${confirming}?`} titleId="delete-folder-title" onClose={() => setConfirming(null)}>
+          <p className="muted hint sheet-lead">
+            {count(confirming) === 0
+              ? 'A pasta está vazia. Os termos dela também saem.'
+              : `${count(confirming) === 1 ? 'A aula desta pasta continua' : `As ${count(confirming)} aulas desta pasta continuam`} no app, só ficam sem matéria. Os termos da pasta saem. Para apagar aulas, use Selecionar na lista.`}
+          </p>
+          {error && <p className="notice" role="alert">{error}</p>}
+          <div className="actions">
+            <button className="ghost" onClick={() => setConfirming(null)} disabled={busy}>Cancelar</button>
+            <button
+              className="danger grow"
+              onClick={() => { const f = confirming; void run(async () => { await deleteFolder(f); setConfirming(null); }); }}
+              disabled={busy}
+            >
+              {busy ? 'Excluindo…' : 'Excluir pasta'}
+            </button>
+          </div>
+        </Sheet>
+      )}
       {termsOf && (
         <TermsSheet
           folder={termsOf}

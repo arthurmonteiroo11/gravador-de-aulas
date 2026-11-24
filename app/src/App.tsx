@@ -12,6 +12,7 @@ import PrintScreen from './screens/PrintScreen';
 import FoldersScreen from './screens/FoldersScreen';
 import AskScreen from './screens/AskScreen';
 import AccountScreen from './screens/AccountScreen';
+import Tutorial, { tutorialSeen } from './components/Tutorial';
 import { normalizeCode } from './lib/invites';
 
 type View =
@@ -42,6 +43,7 @@ function SignedIn({ userId, email }: { userId: string; email: string }) {
     openReviewOnStart = false;
   }, []);
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [tutorial, setTutorial] = useState(() => !tutorialSeen());
   useEffect(() => startUploadLoop(userId), [userId]);
   // Cada tela começa do topo, como uma página nova.
   useEffect(() => {
@@ -107,9 +109,16 @@ function SignedIn({ userId, email }: { userId: string; email: string }) {
     return <StudyScreen key={view.id} id={view.id} onBack={list} onOpenLesson={(id) => setView({ name: 'lesson', id, from: view.id })} />;
   }
   if (view.name === 'account') {
-    return <AccountScreen email={email} onBack={list} />;
+    return (
+      <>
+        {tutorial && <Tutorial onClose={() => setTutorial(false)} />}
+        <AccountScreen email={email} onBack={list} onTutorial={() => setTutorial(true)} />
+      </>
+    );
   }
   return (
+    <>
+    {tutorial && <Tutorial onClose={() => setTutorial(false)} />}
     <LessonsScreen
       onAccount={() => setView({ name: 'account' })}
       onRecord={() => setView({ name: 'record' })}
@@ -122,6 +131,7 @@ function SignedIn({ userId, email }: { userId: string; email: string }) {
       onExamCards={(subject, lessonIds) => setView({ name: 'review', lessonIds, title: subject, back: { name: 'list' } })}
       onAsk={(lessonIds, title) => setView({ name: 'ask', lessonIds, title, back: { name: 'list' } })}
     />
+    </>
   );
 }
 

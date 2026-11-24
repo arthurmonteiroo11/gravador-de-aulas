@@ -5,13 +5,13 @@ import { audioEstimateMb, exportBackup, importBackup, listBackupLessons, type Im
 import { shareFile } from '../media/exportAudio';
 import Icon from '../components/Icon';
 
-type Props = { email: string; onBack: () => void };
+type Props = { email: string; onBack: () => void; onTutorial: () => void };
 
 const dayMonth = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
 const daysLeft = (iso: string) => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
 
 /** Conta: convidar outra pessoa, fazer e restaurar backup, sair. */
-export default function AccountScreen({ email, onBack }: Props) {
+export default function AccountScreen({ email, onBack, onTutorial }: Props) {
   const [inviter, setInviter] = useState(false);
   useEffect(() => {
     canInvite().then(setInviter);
@@ -23,6 +23,16 @@ export default function AccountScreen({ email, onBack }: Props) {
       <p className="subtitle">{email}</p>
       {inviter && <InviteCard />}
       <BackupCard />
+      <section className="panel" aria-labelledby="help-title">
+        <span className="panel-icon"><Icon name="doc" size={20} /></span>
+        <div className="panel-text">
+          <strong id="help-title">Como usar</strong>
+          <small>Seis telas rápidas mostrando como gravar, estudar e revisar.</small>
+        </div>
+        <span className="panel-buttons">
+          <button className="pill" onClick={onTutorial}>Ver o tutorial</button>
+        </span>
+      </section>
       <div className="actions account-out">
         <button className="ghost" onClick={() => void supabase.auth.signOut()}>Sair da conta</button>
       </div>

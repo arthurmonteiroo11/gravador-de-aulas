@@ -688,3 +688,36 @@ textarea::placeholder { color: var(--muted); }
 .select-bar .danger-text { display: inline-flex; align-items: center; gap: 4px; padding: 0 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .delete-list { margin: 4px 0 10px; padding-left: 1.2em; display: grid; gap: 4px; font-weight: 500; }
 .sheet-redo { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 6px; justify-items: start; }
+
+/* Tutorial */
+.tutorial {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: end center;
+  background: color-mix(in srgb, var(--ink) 35%, transparent); padding: 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px); animation: fade 200ms var(--ease) both;
+}
+@media (min-width: 700px) { .tutorial { place-items: center; } }
+.tutorial-card {
+  position: relative; width: min(100%, 440px); padding: 28px 22px 20px; border-radius: 26px;
+  background: var(--paper); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); display: grid; gap: 18px;
+}
+.tutorial-skip { position: absolute; top: 12px; right: 10px; }
+.tutorial-step { display: grid; gap: 8px; min-height: 270px; align-content: start; animation: rise 260ms var(--ease) both; }
+.tutorial-icon {
+  width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; margin-bottom: 8px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.tutorial-count { margin: 0; color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.tutorial-step h2 { margin: 0; font-size: 1.9rem; line-height: 1.1; text-wrap: balance; }
+.tutorial-text { margin: 0; font-size: 1.05rem; line-height: 1.55; text-wrap: pretty; }
+.tutorial-tip {
+  margin: 4px 0 0; padding: 10px 12px; border-radius: 12px; font-size: 0.92rem; line-height: 1.45; color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.tutorial-dots { display: flex; gap: 6px; justify-content: center; }
+.tutorial-dots button {
+  width: 8px; height: 8px; min-height: 0; padding: 0; border: 0; border-radius: 99px; background: var(--line);
+  transition: width 200ms var(--ease), background-color 200ms var(--ease);
+}
+.tutorial-dots button[aria-selected='true'] { width: 22px; background: var(--accent); }
+.tutorial .actions { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .tutorial, .tutorial-step { animation: none; } }
