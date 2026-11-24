@@ -26,7 +26,11 @@ export type StepDeps = {
 
 export type StepResult = { status: LessonStatus; processed_blocks: number; total_blocks: number | null };
 
-const result = (l: LessonRow): StepResult => ({ status: l.status, processed_blocks: l.processed_blocks, total_blocks: l.total_blocks });
+const result = (l: LessonRow): StepResult & { block_failures: number } => ({
+  status: l.status, processed_blocks: l.processed_blocks, total_blocks: l.total_blocks, block_failures: l.block_failures,
+});
+/** Avisos temporários que somem quando o trecho finalmente passa. */
+const isTransient = (msg: string | null | undefined) => Boolean(msg && /^(Aguardando o Gemini|Tentativa \d)/.test(msg));
 
 /** Avança a aula um passo: libera para processar, transcreve um bloco ou gera reescrita e resumo. */
 export async function processStep(lessonId: string, deps: StepDeps): Promise<StepResult> {
@@ -36,6 +40,26 @@ export async function processStep(lessonId: string, deps: StepDeps): Promise<Ste
   } finally {
     await deps.releaseLease();
   }
+}
+
+const finished = (r: StepResult) => r.status === 'ready' || r.status === 'error';
+const sameProgress = (a: StepResult & { block_failures?: number }, b: StepResult & { block_failures?: number }) =>
+  a.status === b.status && a.processed_blocks === b.processed_blocks && a.block_failures === b.block_failures;
+
+/**
+ * Encadeia passos na mesma chamada até a aula ficar pronta, parar de avançar
+ * (esperando partes, outra chamada em andamento, Gemini ocupado) ou o tempo acabar.
+ * O limite fica abaixo dos 150 s que a Edge Function pode rodar.
+ */
+export async function processUntilDone(lessonId: string, deps: StepDeps, budgetMs = 100_000): Promise<StepResult> {
+  const startedAt = deps.now().getTime();
+  let last = await processStep(lessonId, deps);
+  while (!finished(last) && deps.now().getTime() - startedAt < budgetMs) {
+    const next = await processStep(lessonId, deps);
+    if (sameProgress(next, last)) return next;
+    last = next;
+  }
+  return last;
 }
 
 async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
@@ -67,11 +91,18 @@ async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
       const parts = await Promise.all(block.map(async (c) => ({ data: await deps.download(c.path), mimeType: c.mime_type })));
       const segs = parts.length ? await deps.transcribe(parts) : [];
       await deps.replaceSegments(b, toAbsoluteSegments(block, segs));
-      const patch = { processed_blocks: b + 1, block_failures: 0 };
+      const patch = {
+        processed_blocks: b + 1,
+        block_failures: 0,
+        ...(isTransient(lesson.error_message) ? { error_message: null } : {}),
+      };
       await deps.updateLesson(patch);
       return result({ ...lesson, ...patch });
     } catch (e) {
-      if (e instanceof RateLimitError) return result(lesson);
+      if (e instanceof RateLimitError) {
+        await deps.updateLesson({ error_message: `Aguardando o Gemini: ${e.message}` });
+        return result({ ...lesson, error_message: `Aguardando o Gemini: ${e.message}` });
+      }
       return skipOrRetryBlock(lesson, deps, b, e);
     }
   }

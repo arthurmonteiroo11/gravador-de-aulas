@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { processStep, type StepDeps } from '../_shared/processStep.ts';
+import { processUntilDone, type StepDeps } from '../_shared/processStep.ts';
 import { GEMINI_MODEL, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
 import type { LessonRow } from '../_shared/types.ts';
 
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   if (typeof lessonId !== 'string') return json({ error: 'lessonId obrigatório' }, 400);
   if (!(await authorized(req, lessonId))) return json({ error: 'não autorizado' }, 403);
   try {
-    return json(await processStep(lessonId, depsFor(lessonId)));
+    return json(await processUntilDone(lessonId, depsFor(lessonId)));
   } catch (e) {
     console.error(e);
     return json({ error: 'falha ao processar' }, 500);

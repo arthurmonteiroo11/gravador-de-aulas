@@ -1,5 +1,5 @@
 import { assertEquals } from 'jsr:@std/assert@1';
-import { processStep, type StepDeps, MAX_BLOCK_FAILURES } from './processStep.ts';
+import { processStep, processUntilDone, type StepDeps, MAX_BLOCK_FAILURES } from './processStep.ts';
 import { RateLimitError } from './gemini.ts';
 import type { AudioChunk, LessonRow, ModelSegment, Segment } from './types.ts';
 
@@ -133,4 +133,29 @@ Deno.test('aula sem nenhuma parte depois do prazo vira erro em vez de ficar envi
   deps.now = () => new Date('2026-11-24T13:00:00Z');
   await processStep('l', deps);
   assertEquals(state.lesson.status, 'error');
+});
+
+Deno.test('processUntilDone encadeia os passos até a aula ficar pronta', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 12 }, 12, ok);
+  const r = await processUntilDone('l', deps, 100_000);
+  assertEquals(r.status, 'ready');
+  assertEquals(state.lesson.processed_blocks, 2);
+  assertEquals(state.rewriteCalls, 1);
+});
+
+Deno.test('processUntilDone para quando não há avanço (esperando partes)', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 5 }, 2, ok);
+  const r = await processUntilDone('l', deps, 100_000);
+  assertEquals(r.status, 'uploading');
+  assertEquals(state.lesson.status, 'uploading');
+});
+
+Deno.test('limite do Gemini aparece na aula e some quando o bloco passa', async () => {
+  let calls = 0;
+  const { deps, state } = fakeDeps({ total_blocks: 1 }, 3, () =>
+    ++calls === 1 ? Promise.reject(new RateLimitError('Gemini ocupado (429)')) : ok());
+  await processStep('l', deps);
+  assertEquals(state.lesson.error_message, 'Aguardando o Gemini: Gemini ocupado (429)');
+  await processStep('l', deps);
+  assertEquals(state.lesson.error_message, null);
 });
