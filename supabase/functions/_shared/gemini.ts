@@ -2,12 +2,14 @@ import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
 import type { AudioPart, ModelSegment } from './types.ts';
 import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
 
-// Apelido que o Google mantém apontando para o Flash atual: não quebra quando uma versão é aposentada.
-export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-flash-latest';
+// Flash-Lite tem nível grátis com cota diária folgada e aceita áudio. Dá para trocar pelo segredo GEMINI_MODEL, sem reimplantar.
+export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-3.5-flash-lite';
 
 export class RateLimitError extends Error {}
 export const GEMINI_TIMEOUT_MS = 90_000;
 export class GeminiError extends Error {}
+/** Cota esgotada ou sem nível grátis: esperar não resolve. */
+export class QuotaError extends GeminiError {}
 
 type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string };
 
@@ -45,7 +47,13 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
     throw e;
   });
   if (res.status === 429 || res.status === 503) {
-    throw new RateLimitError(`Gemini ocupado (${res.status}): ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    const body = await res.text().catch(() => '');
+    if (/exceeded your current quota|limit: 0/i.test(body)) {
+      throw new QuotaError(
+        `Sem cota do Gemini para o modelo ${model}: troque o modelo ou espere a cota diária renovar e toque em Tentar de novo.`,
+      );
+    }
+    throw new RateLimitError(`Gemini ocupado (${res.status}): ${body.slice(0, 200)}`);
   }
   if (!res.ok) throw new GeminiError(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const json = await res.json();

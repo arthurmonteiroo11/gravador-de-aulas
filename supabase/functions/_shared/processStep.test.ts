@@ -1,6 +1,6 @@
 import { assertEquals } from 'jsr:@std/assert@1';
 import { processStep, processUntilDone, type StepDeps, MAX_BLOCK_FAILURES } from './processStep.ts';
-import { RateLimitError } from './gemini.ts';
+import { QuotaError, RateLimitError } from './gemini.ts';
 import type { AudioChunk, LessonRow, ModelSegment, Segment } from './types.ts';
 
 const chunk = (idx: number): AudioChunk => ({
@@ -167,4 +167,11 @@ Deno.test('processUntilDone não começa outro passo depois do tempo limite', as
   await processUntilDone('l', deps, 45_000);
   assertEquals(state.lesson.status, 'processing');
   assertEquals(state.lesson.processed_blocks, 0);
+});
+
+Deno.test('cota do Gemini esgotada encerra a aula com erro claro (dá para tentar de novo depois)', async () => {
+  const { deps, state } = fakeDeps({ total_blocks: 1 }, 3, () => Promise.reject(new QuotaError('Sem cota')));
+  await processStep('l', deps);
+  assertEquals(state.lesson.status, 'error');
+  assertEquals(state.lesson.error_message, 'Sem cota');
 });

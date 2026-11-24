@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from 'jsr:@std/assert@1';
-import { transcribeBlock, rewriteAndSummarize, RateLimitError } from './gemini.ts';
+import { transcribeBlock, rewriteAndSummarize, RateLimitError, QuotaError, GEMINI_MODEL } from './gemini.ts';
 
 const reply = (payload: unknown, status = 200) =>
   new Response(
@@ -45,4 +45,18 @@ Deno.test('Gemini que demora demais vira RateLimitError (tenta de novo depois, s
     RateLimitError,
     'demorou',
   );
+});
+
+Deno.test('429 de cota esgotada vira QuotaError, não espera para sempre', async () => {
+  const fetcher = () =>
+    Promise.resolve(new Response(JSON.stringify({ error: { code: 429, message: 'You exceeded your current quota, please check your plan and billing details.' } }), { status: 429 }));
+  await assertRejects(
+    () => transcribeBlock([{ data: new Uint8Array([1]), mimeType: 'audio/mp4' }], { apiKey: 'k', fetcher: fetcher as typeof fetch }),
+    QuotaError,
+    'cota',
+  );
+});
+
+Deno.test('modelo padrão tem nível grátis', () => {
+  assertEquals(GEMINI_MODEL, 'gemini-3.5-flash-lite');
 });

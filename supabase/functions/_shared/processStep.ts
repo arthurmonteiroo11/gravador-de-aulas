@@ -1,5 +1,5 @@
 import { BLOCK_SIZE, clock, groupIntoBlocks, toAbsoluteSegments, transcriptText } from './blocks.ts';
-import { RateLimitError } from './gemini.ts';
+import { QuotaError, RateLimitError } from './gemini.ts';
 import type { AudioChunk, AudioPart, LessonRow, LessonStatus, ModelSegment, Segment } from './types.ts';
 
 export const MAX_BLOCK_FAILURES = 3;
@@ -99,6 +99,11 @@ async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
       await deps.updateLesson(patch);
       return result({ ...lesson, ...patch });
     } catch (e) {
+      if (e instanceof QuotaError) {
+        const patch = { status: 'error' as const, error_message: e.message };
+        await deps.updateLesson(patch);
+        return result({ ...lesson, ...patch });
+      }
       if (e instanceof RateLimitError) {
         await deps.updateLesson({ error_message: `Aguardando o Gemini: ${e.message}` });
         return result({ ...lesson, error_message: `Aguardando o Gemini: ${e.message}` });
