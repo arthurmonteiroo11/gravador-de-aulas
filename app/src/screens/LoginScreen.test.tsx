@@ -1,47 +1,37 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
-const { signInWithOtp, verifyOtp } = vi.hoisted(() => ({
-  signInWithOtp: vi.fn().mockResolvedValue({ error: null }),
-  verifyOtp: vi.fn().mockResolvedValue({ error: null }),
+const { signInWithPassword } = vi.hoisted(() => ({
+  signInWithPassword: vi.fn().mockResolvedValue({ error: null }),
 }));
-vi.mock('../lib/supabase', () => ({ supabase: { auth: { signInWithOtp, verifyOtp } } }));
+vi.mock('../lib/supabase', () => ({ supabase: { auth: { signInWithPassword } } }));
 
 import LoginScreen from './LoginScreen';
 
-const askCode = async (email = 'a@b.com') => {
+const login = (email: string, password: string) => {
   render(<LoginScreen />);
   fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: email } });
-  fireEvent.click(screen.getByRole('button', { name: 'Enviar código' }));
+  fireEvent.change(screen.getByLabelText('Senha'), { target: { value: password } });
+  fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
 };
 
 describe('LoginScreen', () => {
-  it('envia o código sem criar conta nova e pede o código', async () => {
-    await askCode();
-    expect(await screen.findByLabelText('Código do e-mail')).toBeInTheDocument();
-    expect(signInWithOtp).toHaveBeenCalledWith({ email: 'a@b.com', options: { shouldCreateUser: false } });
-  });
-
-  it('entra com o código digitado no próprio app', async () => {
-    await askCode();
-    fireEvent.change(await screen.findByLabelText('Código do e-mail'), { target: { value: ' 123 456 ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+  it('entra com e-mail e senha dentro do app', async () => {
+    login(' a@b.com ', 'segredo123');
     await vi.waitFor(() =>
-      expect(verifyOtp).toHaveBeenCalledWith({ email: 'a@b.com', token: '123456', type: 'email' }),
+      expect(signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.com', password: 'segredo123' }),
     );
   });
 
-  it('avisa quando o código está errado ou vencido', async () => {
-    verifyOtp.mockResolvedValueOnce({ error: { message: 'Token has expired or is invalid' } });
-    await askCode();
-    fireEvent.change(await screen.findByLabelText('Código do e-mail'), { target: { value: '000000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
-    expect(await screen.findByText(/Código errado ou vencido/)).toBeInTheDocument();
+  it('avisa quando o e-mail ou a senha estão errados', async () => {
+    signInWithPassword.mockResolvedValueOnce({ error: { message: 'Invalid login credentials' } });
+    login('a@b.com', 'errada');
+    expect(await screen.findByText(/E-mail ou senha errados/)).toBeInTheDocument();
   });
 
-  it('mostra erro quando o e-mail não foi convidado', async () => {
-    signInWithOtp.mockResolvedValueOnce({ error: { message: 'Signups not allowed for otp' } });
-    await askCode('x@y.com');
-    expect(await screen.findByText(/não foi convidado/)).toBeInTheDocument();
+  it('avisa quando não consegue falar com o servidor', async () => {
+    signInWithPassword.mockResolvedValueOnce({ error: { message: 'Failed to fetch' } });
+    login('a@b.com', 'x');
+    expect(await screen.findByText(/Não foi possível entrar/)).toBeInTheDocument();
   });
 });

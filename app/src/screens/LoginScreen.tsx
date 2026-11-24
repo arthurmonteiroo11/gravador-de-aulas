@@ -1,70 +1,44 @@
 import { useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
 
-// O app da tela inicial não divide a sessão com o Safari, então o login é por código digitado aqui dentro.
-type State =
-  | { kind: 'email' }
-  | { kind: 'sending' }
-  | { kind: 'code' }
-  | { kind: 'verifying' }
-  | { kind: 'error'; step: 'email' | 'code'; message: string };
+// O app da tela inicial não divide a sessão com o Safari, então o login é por senha, sem depender de e-mail.
+// As contas são criadas pelo Arthur no painel do Supabase (Authentication → Users → Add user).
+type State = { kind: 'idle' } | { kind: 'signing-in' } | { kind: 'error'; message: string };
 
-const describeSendError = (message: string) =>
-  /signup|not allowed|not found/i.test(message)
-    ? 'Este e-mail não foi convidado. Peça um convite ao Arthur.'
-    : 'Não foi possível enviar o código. Tente de novo.';
+const describeError = (message: string) =>
+  /invalid login credentials/i.test(message)
+    ? 'E-mail ou senha errados.'
+    : `Não foi possível entrar. Verifique a internet e tente de novo. (${message})`;
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [state, setState] = useState<State>({ kind: 'email' });
+  const [password, setPassword] = useState('');
+  const [state, setState] = useState<State>({ kind: 'idle' });
 
-  const sendCode = async (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setState({ kind: 'sending' });
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
-    setState(error ? { kind: 'error', step: 'email', message: describeSendError(error.message) } : { kind: 'code' });
-  };
-
-  const verifyCode = async (event: FormEvent) => {
-    event.preventDefault();
-    setState({ kind: 'verifying' });
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.replace(/\D/g, ''), type: 'email' });
+    setState({ kind: 'signing-in' });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     // Sem erro, a sessão muda e o App troca de tela sozinho.
-    if (error) setState({ kind: 'error', step: 'code', message: 'Código errado ou vencido. Confira ou peça outro.' });
+    setState(error ? { kind: 'error', message: describeError(error.message) } : { kind: 'idle' });
   };
-
-  const onCodeStep = state.kind === 'code' || state.kind === 'verifying' || (state.kind === 'error' && state.step === 'code');
-
-  if (onCodeStep) {
-    return (
-      <form onSubmit={verifyCode}>
-        <p>Enviamos um código para {email.trim()}.</p>
-        <label htmlFor="code">Código do e-mail</label>
-        <input
-          id="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          required
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-        />
-        {state.kind === 'error' && <p className="notice">{state.message}</p>}
-        <p>
-          <button className="primary" type="submit" disabled={state.kind === 'verifying'}>Entrar</button>{' '}
-          <button type="button" onClick={() => { setCode(''); setState({ kind: 'email' }); }}>Pedir outro código</button>
-        </p>
-      </form>
-    );
-  }
 
   return (
-    <form onSubmit={sendCode}>
+    <form onSubmit={submit}>
       <label htmlFor="email">E-mail</label>
       <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+      <label htmlFor="password">Senha</label>
+      <input
+        id="password"
+        type="password"
+        autoComplete="current-password"
+        required
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
       {state.kind === 'error' && <p className="notice">{state.message}</p>}
       <p>
-        <button className="primary" type="submit" disabled={state.kind === 'sending'}>Enviar código</button>
+        <button className="primary" type="submit" disabled={state.kind === 'signing-in'}>Entrar</button>
       </p>
     </form>
   );

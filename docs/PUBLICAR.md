@@ -7,7 +7,7 @@ Siga na ordem. Nenhuma chave vai para o GitHub: este repositório é público.
 1. Dê merge da branch `v1` na `main`. A integração do Supabase com o GitHub aplica as migrações de `supabase/migrations/`.
    - Se a integração não aplicar, rode no SQL Editor os quatro arquivos de `supabase/migrations/`, em ordem.
 2. **Authentication → Sign In / Providers → Email:** desligue "Allow new users to sign up".
-3. **Authentication → Users → Invite user:** convide o seu e-mail.
+3. **Authentication → Users → Add user → Create new user:** coloque e-mail e senha e marque "Auto Confirm User". Faça o mesmo para a segunda pessoa.
 4. **Authentication → URL Configuration:** em *Site URL* e *Redirect URLs*, coloque o endereço da Vercel (passo 3).
 
 ## 2. Funções e segredos
@@ -35,7 +35,7 @@ Siga na ordem. Nenhuma chave vai para o GitHub: este repositório é público.
 
 1. Abra o endereço da Vercel no **Safari**.
 2. Compartilhar → **Adicionar à Tela de Início**.
-3. Abra pelo ícone, digite seu e-mail e toque no link que chegar.
+3. Abra pelo ícone e entre com o e-mail e a senha criados no passo 3 do Supabase.
 
 ## 5. Roteiro de teste
 
