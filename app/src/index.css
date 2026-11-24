@@ -687,3 +687,4 @@ textarea::placeholder { color: var(--muted); }
 .speaker-field input { margin: 0; }
 .select-bar .danger-text { display: inline-flex; align-items: center; gap: 4px; padding: 0 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .delete-list { margin: 4px 0 10px; padding-left: 1.2em; display: grid; gap: 4px; font-weight: 500; }
+.sheet-redo { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 6px; justify-items: start; }

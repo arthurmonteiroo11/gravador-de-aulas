@@ -160,3 +160,18 @@ Deno.test('contexto da matéria vai no começo da transcrição e da reescrita',
   await transcribeBlock([], { apiKey: 'k', fetcher: (_u, init) => { bodies.push(JSON.parse(String(init?.body))); return Promise.resolve(reply([])); } });
   assertEquals(bodies[2].contents[0].parts[0].text.startsWith('Você vai receber'), true);
 });
+
+Deno.test('transcrição: todos os modelos ocupados diz isso, e pede quem fala obrigatório', async () => {
+  const { transcribeBlock } = await import('./gemini.ts');
+  const tried: string[] = [];
+  let schema: { items?: { required?: string[] } } = {};
+  const fetcher = (url: string | URL | Request, init?: RequestInit) => {
+    tried.push(String(url).split('/models/')[1].split(':')[0]);
+    schema = JSON.parse(String(init?.body)).generationConfig.responseSchema;
+    return Promise.resolve(new Response(JSON.stringify({ error: { message: 'high demand' } }), { status: 503 }));
+  };
+  const e = await assertRejects(() => transcribeBlock([], { apiKey: 'k', fetcher: fetcher as typeof fetch, model: 'a', fallbacks: ['b', 'c'] }), RateLimitError);
+  assertEquals(tried, ['a', 'b', 'c']);
+  assertEquals(e.message.startsWith('todos os modelos (3) estão ocupados'), true);
+  assertEquals(schema.items?.required?.includes('speaker'), true);
+});

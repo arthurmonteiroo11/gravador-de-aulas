@@ -54,8 +54,10 @@ const SEGMENTS_SCHEMA = {
   type: 'ARRAY',
   items: {
     type: 'OBJECT',
-    properties: { part: { type: 'INTEGER' }, start: { type: 'NUMBER' }, end: { type: 'NUMBER' }, text: { type: 'STRING' }, speaker: { type: 'STRING' } },
-    required: ['part', 'start', 'end', 'text'],
+    // Quem fala vem antes do texto e é obrigatório: opcional, o modelo leve costuma deixar de fora.
+    properties: { part: { type: 'INTEGER' }, start: { type: 'NUMBER' }, end: { type: 'NUMBER' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } },
+    propertyOrdering: ['part', 'start', 'end', 'speaker', 'text'],
+    required: ['part', 'start', 'end', 'speaker', 'text'],
   },
 };
 
@@ -81,6 +83,13 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
       if (!(e instanceof ModelNotFoundError)) firstError ??= e;
       console.warn(`Gemini ${model} recusou (${(e as Error).message.slice(0, 120)}); tentando o próximo modelo`);
     }
+  }
+  // Todos recusaram por sobrecarga: diz isso, e não só o erro do primeiro, para não parecer que os reserva nem foram tentados.
+  if (firstError instanceof RateLimitError && models.length > 1) {
+    throw new RateLimitError(
+      `todos os modelos (${models.length}) estão ocupados agora. O app tenta de novo sozinho a cada 5 minutos.`,
+      firstError.status, firstError.retryAfterS, firstError.reason,
+    );
   }
   throw firstError ?? new GeminiError('Nenhum modelo do Gemini disponível');
 }

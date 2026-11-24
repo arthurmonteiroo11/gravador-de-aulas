@@ -4,7 +4,7 @@ import { deleteLessons, listLessons, requestProcessing } from '../lessons/api';
 import { finalizeAbandoned } from '../lessons/recovery';
 import { formatDay, formatDuration, statusLabel } from '../lessons/format';
 import { startPoller } from '../lessons/poller';
-import { retryLesson } from '../lessons/retry';
+import { retryLesson, isWaitingForGemini } from '../lessons/retry';
 import { describeLoadError } from '../lessons/errors';
 import { errorText, recordProblem } from '../lib/diagnostics';
 import { filterLessons, searchText, splitMatches, type TextHit } from '../lessons/search';
@@ -385,8 +385,11 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
                 </span>
                 {l.status === 'processing' && l.error_message && <span className="muted" style={{ fontSize: '0.85rem' }}>{l.error_message}</span>}
               </button>
-              {!picked && (l.status === 'error' || l.status === 'recording') && (
+              {!picked && (l.status === 'error' || l.status === 'recording' || isWaitingForGemini(l)) && (
                 <div className="row-actions">
+                  {isWaitingForGemini(l) && (
+                    <button onClick={() => void requestProcessing(l.id).catch(() => undefined).then(refresh)}>Tentar agora</button>
+                  )}
                   {l.status === 'error' && (
                     <button onClick={() => void retryLesson(l).then(refresh).catch(() => setError('Não foi possível tentar de novo.'))}>
                       Tentar de novo

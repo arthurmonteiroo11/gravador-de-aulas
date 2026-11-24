@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { AudioChunk, Lesson } from '../lib/types';
 import { cardCount, createFlashcards } from '../lessons/flashcards';
-import { deleteLesson, updateLesson } from '../lessons/api';
+import { deleteLesson, requestProcessing, updateLesson } from '../lessons/api';
 import { cleanName, createFolder } from '../lessons/folders';
 import { pendingKeys, removeChunk } from '../storage/localQueue';
 import { fileName, joinAudio, shareFile } from '../media/exportAudio';
 import SubjectPicker from './SubjectPicker';
 import Icon from './Icon';
 import Sheet from './Sheet';
+import { retranscribe } from '../lessons/retry';
 
 type Props = {
   lesson: Lesson;
@@ -92,6 +93,7 @@ export default function LessonActions({ lesson, chunks, urls, folders, onReview,
       {error && <p className="notice" role="alert">{error}</p>}
       {editing && (
         <EditLessonSheet
+          chunkCount={chunks.length}
           lesson={lesson}
           folders={folders}
           onClose={() => setEditing(false)}
@@ -107,8 +109,9 @@ export default function LessonActions({ lesson, chunks, urls, folders, onReview,
 }
 
 /** Folha que sobe de baixo: título, matéria e apagar a aula. */
-function EditLessonSheet({ lesson, folders, onClose, onSaved, onDeleted }: {
+function EditLessonSheet({ lesson, chunkCount, folders, onClose, onSaved, onDeleted }: {
   lesson: Lesson;
+  chunkCount: number;
   folders: string[];
   onClose: () => void;
   onSaved: (patch: Partial<Lesson>) => void;
@@ -140,6 +143,21 @@ function EditLessonSheet({ lesson, folders, onClose, onSaved, onDeleted }: {
     }
   };
 
+  const [confirmRedo, setConfirmRedo] = useState(false);
+  const redo = async () => {
+    if (!confirmRedo) return setConfirmRedo(true);
+    setBusy(true);
+    setError(null);
+    try {
+      const patch = await retranscribe(lesson.id, chunkCount);
+      onSaved(patch);
+      void requestProcessing(lesson.id).catch(() => undefined);
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     if (!confirmDelete) return setConfirmDelete(true);
     setBusy(true);
@@ -166,6 +184,16 @@ function EditLessonSheet({ lesson, folders, onClose, onSaved, onDeleted }: {
         <button className="ghost" onClick={onClose} disabled={busy}>Cancelar</button>
         <button className="primary grow" onClick={() => void save()} disabled={busy}>Salvar</button>
       </div>
+      {lesson.status === 'ready' && !lesson.audio_deleted && chunkCount > 0 && (
+        <div className="sheet-redo">
+          <button className="pill" onClick={() => void redo()} disabled={busy}>
+            {confirmRedo ? 'Toque de novo para transcrever' : 'Transcrever de novo'}
+          </button>
+          <p className="muted hint">
+            Refaz a transcrição (marcando quem fala), o resumo e a reescrita a partir do áudio. Gasta {Math.ceil(chunkCount / 10) + 1} {Math.ceil(chunkCount / 10) + 1 === 1 ? 'pedido' : 'pedidos'} ao Gemini, e as correções feitas à mão no texto se perdem.
+          </p>
+        </div>
+      )}
       <div className="sheet-danger">
         <button className="danger-outline" onClick={() => void remove()} disabled={busy} aria-live="polite">
           <Icon name="trash" size={18} />
