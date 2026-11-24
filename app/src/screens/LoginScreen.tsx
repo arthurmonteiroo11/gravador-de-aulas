@@ -24,22 +24,28 @@ export default function LoginScreen() {
   };
 
   return (
-    <form onSubmit={submit}>
-      <label htmlFor="email">E-mail</label>
-      <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-      <label htmlFor="password">Senha</label>
-      <input
-        id="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      {state.kind === 'error' && <p className="notice">{state.message}</p>}
-      <p>
-        <button className="primary" type="submit" disabled={state.kind === 'signing-in'}>Entrar</button>
-      </p>
+    <form onSubmit={submit} className="enter" style={{ paddingTop: '12vh' }}>
+      <h1 className="title" style={{ fontSize: '3rem' }}>Aulas</h1>
+      <p className="subtitle">Grave a aula e estude pelo texto depois.</p>
+      <div>
+        <label htmlFor="email">E-mail</label>
+        <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <label htmlFor="password">Senha</label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      <div>
+        {state.kind === 'error' && <p className="notice">{state.message}</p>}
+        <div className="actions">
+          <button className="primary grow" type="submit" disabled={state.kind === 'signing-in'}>Entrar</button>
+        </div>
+      </div>
     </form>
   );
 }

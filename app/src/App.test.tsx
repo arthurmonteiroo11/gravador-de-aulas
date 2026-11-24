@@ -3,8 +3,8 @@ import { describe, it, expect } from 'vitest';
 import App from './App';
 
 describe('App', () => {
-  it('mostra o nome do app', () => {
+  it('abre carregando a sessão', () => {
     render(<App />);
-    expect(screen.getByText('Gravador de Aulas')).toBeInTheDocument();
+    expect(screen.getByText('Carregando…')).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import { createLesson, finishRecording } from '../lessons/api';
 import { formatClock } from '../lessons/format';
 import { serverErrorDetail } from '../lessons/errors';
 import { appUpdater } from '../lib/appUpdate';
+import Icon from '../components/Icon';
 
 export const LIMIT_S = 5400; // 1h30
 
@@ -54,9 +55,9 @@ const micErrorMessage = (e: unknown) =>
     ? 'Permita o microfone em Ajustes > Safari > Microfone e tente de novo.'
     : 'Não foi possível acessar o microfone.';
 
-type Props = { deps?: RecordDeps; onDone: (lessonId: string) => void; onCancel: () => void };
+type Props = { deps?: RecordDeps; onDone: (lessonId: string) => void; onCancel: () => void; subjects?: string[] };
 
-export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Props) {
+export default function RecordScreen({ deps = realDeps, onDone, onCancel, subjects = [] }: Props) {
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
   const [voiceFilter, setVoiceFilter] = useState(true);
@@ -193,55 +194,91 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
 
   if (phase === 'form' || phase === 'starting') {
     return (
-      <form onSubmit={start}>
-        <label htmlFor="title">Título da aula</label>
-        <input id="title" required value={title} onChange={(e) => setTitle(e.target.value)} />
-        <label htmlFor="subject">Matéria (opcional)</label>
-        <input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'inherit' }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={voiceFilter} onChange={(e) => setVoiceFilter(e.target.checked)} />
-          Filtro de voz
+      <form onSubmit={start} className="enter">
+        <button type="button" className="back" onClick={onCancel} aria-label="Voltar">
+          <Icon name="back" size={20} />
+          Aulas
+        </button>
+        <h1 className="title">Nova aula</h1>
+        <div>
+          <label htmlFor="title">Título da aula</label>
+          <input id="title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Derivadas e regra da cadeia" />
+          <label htmlFor="subject">Matéria (opcional)</label>
+          <input id="subject" list="subjects" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex.: Cálculo I" autoComplete="off" />
+          <datalist id="subjects">
+            {subjects.map((s) => <option key={s} value={s} />)}
+          </datalist>
+        </div>
+        <label className="switch">
+          <span>
+            Filtro de voz
+            <small>Reduz ruído e eco para destacar o professor.</small>
+          </span>
+          <input type="checkbox" checked={voiceFilter} onChange={(e) => setVoiceFilter(e.target.checked)} />
         </label>
-        {error && <p className="notice">{error}</p>}
-        <p style={{ display: 'flex', gap: 8 }}>
-          <button className="primary" type="submit" disabled={phase === 'starting'}>Gravar</button>
-          <button type="button" onClick={onCancel}>Voltar</button>
-        </p>
+        <div>
+          {error && <p className="notice">{error}</p>}
+          <div className="actions">
+            <button className="danger grow" type="submit" disabled={phase === 'starting'}>
+              Gravar
+            </button>
+          </div>
+        </div>
       </form>
     );
   }
 
+  const live = phase === 'recording';
   return (
-    <section>
+    <section className="recorder enter">
+      <span className="rec-state" data-on={live}>
+        <span className="live" />
+        {live ? 'Gravando' : phase === 'finishing' ? 'Salvando' : 'Pausada'}
+      </span>
       <p className="clock" aria-live="off">{formatClock(seconds)}</p>
-      <p className="notice">Não bloqueie a tela nem troque de app. Se acontecer, a gravação pausa.</p>
-      {screenWarning && (
-        <p className="notice">
-          Este iPhone não deixou o app manter a tela acesa. Em Ajustes &gt; Tela e Brilho &gt; Bloqueio Automático, escolha Nunca durante a aula.
-        </p>
-      )}
-      {phase === 'paused' && (
-        <p className="notice">
-          {pausedBySystem(rec.current?.pauseReason)}Gravação pausada. Toque em Continuar para seguir na mesma aula.
-        </p>
-      )}
-      {phase === 'limit' && (
-        <div className="notice" role="alertdialog">
-          <p>Já são 1h30. Encerrar a gravação?</p>
-          <p style={{ display: 'flex', gap: 8 }}>
-            <button className="primary" onClick={finish}>Encerrar</button>
-            <button onClick={resume}>Continuar gravando</button>
-          </p>
+      <p className="rec-title">{title}</p>
+
+      {phase !== 'limit' && (
+        <div className="actions">
+          {live && (
+            <button className="big-button" data-on="true" onClick={pause} aria-label="Pausar">
+              <Icon name="pause" size={34} />
+            </button>
+          )}
+          {phase === 'paused' && (
+            <button className="big-button" onClick={resume} aria-label="Continuar">
+              <Icon name="mic" size={34} />
+            </button>
+          )}
+          <button className="big-button calm" onClick={finish} disabled={phase === 'finishing'} aria-label="Encerrar">
+            <Icon name="stop" size={28} />
+          </button>
         </div>
       )}
-      {error && <p className="notice">{error}</p>}
-      {phase !== 'limit' && (
-        <p style={{ display: 'flex', gap: 8 }}>
-          {phase === 'recording' && <button onClick={pause}>Pausar</button>}
-          {phase === 'paused' && <button className="primary" onClick={resume}>Continuar</button>}
-          <button onClick={finish} disabled={phase === 'finishing'}>Encerrar</button>
-        </p>
-      )}
+
+      <div style={{ width: '100%', marginTop: 28 }}>
+        {phase === 'paused' && (
+          <p className="notice">
+            {pausedBySystem(rec.current?.pauseReason)}Gravação pausada. Toque em Continuar para seguir na mesma aula.
+          </p>
+        )}
+        {phase === 'limit' && (
+          <div className="notice" role="alertdialog">
+            <p style={{ marginTop: 0 }}>Já são 1h30. Encerrar a gravação?</p>
+            <div className="actions" style={{ marginTop: 8 }}>
+              <button className="primary" onClick={finish}>Encerrar</button>
+              <button onClick={resume}>Continuar gravando</button>
+            </div>
+          </div>
+        )}
+        {screenWarning && (
+          <p className="notice">
+            Este iPhone não deixou o app manter a tela acesa. Em Ajustes &gt; Tela e Brilho &gt; Bloqueio Automático, escolha Nunca durante a aula.
+          </p>
+        )}
+        {error && <p className="notice">{error}</p>}
+        <p className="muted" style={{ fontSize: '0.88rem' }}>Não bloqueie a tela nem troque de app. Se acontecer, a gravação pausa.</p>
+      </div>
     </section>
   );
 }
