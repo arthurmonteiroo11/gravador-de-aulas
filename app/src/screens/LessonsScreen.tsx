@@ -5,6 +5,7 @@ import { finalizeAbandoned } from '../lessons/recovery';
 import { formatDuration, statusLabel } from '../lessons/format';
 import { startPoller } from '../lessons/poller';
 import { retryLesson } from '../lessons/retry';
+import { describeLoadError } from '../lessons/errors';
 
 type Props = { onRecord: () => void; onOpen: (id: string) => void };
 
@@ -18,8 +19,8 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
     try {
       setLessons(await listLessons());
       setError(null);
-    } catch {
-      setError('Sem conexão. Mostrando quando a internet voltar.');
+    } catch (err) {
+      setError(describeLoadError(err));
     }
   }, []);
 
