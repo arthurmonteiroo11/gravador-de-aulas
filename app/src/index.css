@@ -444,6 +444,33 @@ mark { background: linear-gradient(transparent 12%, var(--mark) 12%, var(--mark)
 }
 .ask-bar .send { width: 44px; height: 44px; flex: none; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 
+/* Computador: a aula de um lado, anotações e perguntas do outro */
+@media (min-width: 1100px) {
+  .app:has(.study-layout) { max-width: 1280px; padding-left: 40px; padding-right: 40px; padding-bottom: 40px; }
+  .study-layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 40px; align-items: start; }
+  .study-main { min-width: 0; max-width: 760px; }
+  .study-side {
+    position: sticky; top: 20px; max-height: calc(100vh - 40px); display: flex; flex-direction: column;
+    padding: 6px 18px 0; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+    animation: rise 420ms var(--ease) 200ms both;
+  }
+  .study-side > div:not([hidden]) { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding-bottom: 16px; }
+  .side-tabs { margin: 12px 0 14px; }
+  .study-side .notes textarea { min-height: 52vh; }
+  .ask-embedded { display: flex; flex-direction: column; flex: 1; padding-bottom: 0; }
+  .ask-embedded .chat { flex: 1; }
+  .ask-embedded .ask-bar {
+    position: sticky; left: auto; translate: none; width: auto; bottom: 0; margin: 12px -18px -16px; padding: 12px 18px 16px;
+    background: var(--surface); backdrop-filter: none; border-radius: 0 0 22px 22px;
+  }
+  .ask-embedded .ask-suggestions .chip { font-size: 0.9rem; }
+
+  /* Lista de aulas: duas colunas de cartões */
+  .app:has(.lesson-list) { max-width: 1040px; }
+  .lesson-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .exam-card, .review-banner { max-width: none; }
+}
+
 /* Selecionar aulas para juntar */
 .lesson-row[data-selectable='true'] { grid-template-columns: 1fr auto; align-items: center; }
 .lesson-row[data-selectable='true'] > :not(.check) { grid-column: 1; }
@@ -577,6 +604,14 @@ textarea::placeholder { color: var(--muted); }
 .enter > *:nth-child(3) { animation-delay: 120ms; }
 .enter > *:nth-child(4) { animation-delay: 180ms; }
 .enter > *:nth-child(n + 5) { animation-delay: 240ms; }
+/* A aula fica dentro de um bloco (para caber na coluna do computador); a entrada continua em cascata. */
+.lesson-main { display: contents; }
+.enter .lesson-main > * { animation: rise 420ms var(--ease) both; }
+.enter .lesson-main > *:nth-child(2) { animation-delay: 60ms; }
+.enter .lesson-main > *:nth-child(3) { animation-delay: 120ms; }
+.enter .lesson-main > *:nth-child(4) { animation-delay: 180ms; }
+.enter .lesson-main > *:nth-child(n + 5) { animation-delay: 240ms; }
+.enter.study-layout > * { animation: none; }
 .fade-in { animation: rise 300ms var(--ease) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
 

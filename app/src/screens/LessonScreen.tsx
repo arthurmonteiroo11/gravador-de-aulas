@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { Lesson } from '../lib/types';
 import { getLesson, requestProcessing } from '../lessons/api';
 import { pendingKeys } from '../storage/localQueue';
+import { useWide } from '../lib/useWide';
+import AskScreen from './AskScreen';
 import { errorText, lastProblems, recordProblem } from '../lib/diagnostics';
 import PipelineStatus from '../components/PipelineStatus';
 import { uploadPending } from '../storage/uploader';
@@ -38,6 +40,10 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
   const [tab, setTab] = useState<Tab>(focus?.tab ?? 'summary');
   const query = focus?.query ?? '';
   const scrolled = useRef(false);
+  // Trecho em destaque na transcrição: vem da busca, de uma fonte de pergunta ou da coluna ao lado.
+  const [focusAt, setFocusAt] = useState<number | null>(focus?.startS ?? null);
+  const wide = useWide();
+  const [side, setSide] = useState<'notes' | 'ask'>('notes');
   const [urls, setUrls] = useState<Map<number, string>>(new Map());
   const [onDevice, setOnDevice] = useState(0);
   const [problems, setProblems] = useState(lastProblems());
@@ -161,10 +167,18 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
 
   const pendingText = lesson.status === 'error' ? `Erro: ${lesson.error_message ?? 'tente de novo mais tarde.'}` : `${statusLabel(lesson)}…`;
   const total = lessonLength(content.chunks);
-  const tabIndex = TABS.findIndex(([k]) => k === tab);
+  // No computador, as anotações moram na coluna ao lado; as abas ficam só com o texto da aula.
+  const tabs = wide ? TABS.filter(([k]) => k !== 'notes') : TABS;
+  const shownTab: Tab = wide && tab === 'notes' ? 'summary' : tab;
+  const tabIndex = tabs.findIndex(([k]) => k === shownTab);
+  const goTo = (startS: number) => {
+    scrolled.current = false;
+    setFocusAt(startS);
+    setTab('transcript');
+  };
 
-  return (
-    <section className="enter">
+  const main = (
+    <div className="lesson-main">
       {back}
       <h1 className="title">{lesson.title}</h1>
       <p className="meta-line">
@@ -187,7 +201,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
           folders={folders}
           onReview={() => onReview?.(lesson.id, lesson.title)}
           onPrint={() => onPrint?.(lesson.id)}
-          onAsk={() => onAsk?.(lesson.id, lesson.title)}
+          onAsk={() => (wide ? setSide('ask') : onAsk?.(lesson.id, lesson.title))}
           onChanged={(patch) => setLesson((l) => l && { ...l, ...patch })}
           onDeleted={() => (onDeleted ?? onBack)()}
         />
@@ -251,31 +265,31 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
         )}
       </div>
 
-      <nav className="segmented" role="tablist">
-        <span className="thumb" style={{ transform: `translateX(${tabIndex * 100}%)` }} />
-        {TABS.map(([key, label]) => (
-          <button key={key} role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={tab === key} onClick={() => setTab(key)}>
+      <nav className="segmented" role="tablist" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+        <span className="thumb" style={{ width: `calc((100% - 6px) / ${tabs.length})`, transform: `translateX(${tabIndex * 100}%)` }} />
+        {tabs.map(([key, label]) => (
+          <button key={key} role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={shownTab === key} onClick={() => setTab(key)}>
             {label}
           </button>
         ))}
       </nav>
 
       {/* As abas ficam montadas: trocar de aba não perde o que está sendo editado. */}
-      <Panel tab="summary" active={tab}>
+      <Panel tab="summary" active={shownTab}>
         {content.summary ? (
           <EditableMarkdown text={content.summary} components={marked(query)} onSave={storeOutput('summary')} onDirty={markDirty.summary} />
         ) : (
           <p className="muted">{pendingText}</p>
         )}
       </Panel>
-      <Panel tab="rewrite" active={tab}>
+      <Panel tab="rewrite" active={shownTab}>
         {content.rewrite ? (
           <EditableMarkdown text={content.rewrite} components={marked(query)} onSave={storeOutput('rewrite')} onDirty={markDirty.rewrite} />
         ) : (
           <p className="muted">{pendingText}</p>
         )}
       </Panel>
-      <Panel tab="transcript" active={tab}>
+      <Panel tab="transcript" active={shownTab}>
         {content.segments.length ? (
           <EditableList
             items={content.segments.filter((s) => s.id != null).map((s) => ({ key: s.id!, label: formatClock(s.start_s), text: s.text }))}
@@ -284,7 +298,7 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
             view={
               <ol className="transcript">
                 {content.segments.map((s, i) => {
-                  const focused = focus?.startS != null && Math.abs(s.start_s - focus.startS) < 0.01;
+                  const focused = focusAt != null && Math.abs(s.start_s - focusAt) < 0.01;
                   return (
                     <li key={s.id ?? i}>
                       <button
@@ -312,9 +326,33 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
           <p className="muted">{pendingText}</p>
         )}
       </Panel>
-      <Panel tab="notes" active={tab}>
-        <Notes lessonId={lessonId} initial={lesson.notes ?? ''} />
-      </Panel>
+      {!wide && (
+        <Panel tab="notes" active={shownTab}>
+          <Notes lessonId={lessonId} initial={lesson.notes ?? ''} />
+        </Panel>
+      )}
+    </div>
+  );
+
+  if (!wide) return <section className="enter">{main}</section>;
+  return (
+    <section className="enter study-layout">
+      <div className="study-main">{main}</div>
+      <aside className="study-side" aria-label="Anotações e perguntas">
+        <nav className="segmented side-tabs" role="tablist" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          <span className="thumb" style={{ width: 'calc((100% - 6px) / 2)', transform: `translateX(${side === 'ask' ? 100 : 0}%)` }} />
+          <button role="tab" aria-selected={side === 'notes'} onClick={() => setSide('notes')}>Anotações</button>
+          <button role="tab" aria-selected={side === 'ask'} onClick={() => setSide('ask')} disabled={lesson.status !== 'ready'}>Perguntar</button>
+        </nav>
+        <div hidden={side !== 'notes'}>
+          <Notes lessonId={lessonId} initial={lesson.notes ?? ''} />
+        </div>
+        <div hidden={side !== 'ask'}>
+          {lesson.status === 'ready' && (
+            <AskScreen embedded lessonIds={[lesson.id]} title={lesson.title} onBack={() => setSide('notes')} onOpenSource={(_id, t) => goTo(t)} />
+          )}
+        </div>
+      </aside>
     </section>
   );
 }

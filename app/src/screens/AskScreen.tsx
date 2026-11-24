@@ -10,12 +10,14 @@ type Props = {
   title: string;
   onBack: () => void;
   onOpenSource: (lessonId: string, startS: number) => void;
+  /** Dentro da coluna lateral da aula, no computador: sem cabeçalho de tela. */
+  embedded?: boolean;
 };
 
 const SUGGESTIONS = ['Quais foram os pontos principais?', 'O que pode cair na prova?', 'Explique de novo a parte mais difícil.'];
 
 /** Conversa com as aulas: a resposta vem só do que o professor disse, com o trecho e o tempo de cada fonte. */
-export default function AskScreen({ lessonIds, title, onBack, onOpenSource }: Props) {
+export default function AskScreen({ lessonIds, title, onBack, onOpenSource, embedded = false }: Props) {
   const key = chatKey(lessonIds);
   // Uma pergunta ainda sem resposta é de uma visita anterior que não esperou: a resposta chega sozinha na memória.
   const [items, setItems] = useState<ChatItem[]>(() => savedChat(key));
@@ -30,7 +32,7 @@ export default function AskScreen({ lessonIds, title, onBack, onOpenSource }: Pr
   const many = lessonIds.length > 1;
 
   useEffect(() => {
-    if (items.length) end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    if (items.length) end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [items.length, busy]);
 
   // A resposta vai direto para a memória da conversa: se a pessoa sair antes dela chegar, ela aparece na volta.
@@ -61,15 +63,21 @@ export default function AskScreen({ lessonIds, title, onBack, onOpenSource }: Pr
   };
 
   return (
-    <section className="enter ask">
-      <button className="back" onClick={onBack} aria-label="Voltar">
-        <Icon name="back" size={20} />
-        Voltar
-      </button>
-      <h1 className="title">Perguntar</h1>
-      <p className="subtitle">
-        {many ? `Sobre as ${lessonIds.length} aulas de ${title}.` : `Sobre a aula ${title}.`} A resposta usa só o que o professor disse e mostra de onde veio.
-      </p>
+    <section className={embedded ? 'ask ask-embedded' : 'enter ask'}>
+      {embedded ? (
+        <p className="muted hint">A resposta usa só o que o professor disse nesta aula. Toque numa fonte para ir ao trecho.</p>
+      ) : (
+        <>
+          <button className="back" onClick={onBack} aria-label="Voltar">
+            <Icon name="back" size={20} />
+            Voltar
+          </button>
+          <h1 className="title">Perguntar</h1>
+          <p className="subtitle">
+            {many ? `Sobre as ${lessonIds.length} aulas de ${title}.` : `Sobre a aula ${title}.`} A resposta usa só o que o professor disse e mostra de onde veio.
+          </p>
+        </>
+      )}
 
       <div className="chat" aria-live="polite">
         {items.length === 0 && (
