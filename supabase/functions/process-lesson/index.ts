@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { processUntilDone, type StepDeps } from '../_shared/processStep.ts';
-import { combineTexts, GEMINI_MODEL, GeminiTimeoutError, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
+import { combineTexts, GEMINI_MODEL, GeminiTimeoutError, makeFlashcards, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
+import { flashcardsPrompt } from '../_shared/flashcards.ts';
 import { combinePrompt, fallbackTitle, MAX_LESSONS, type CombineSource } from '../_shared/combine.ts';
 import type { LessonRow } from '../_shared/types.ts';
 
@@ -127,28 +128,73 @@ async function transcriptOf(db: Db, lessonId: string): Promise<string> {
   return parts.join(' ');
 }
 
+/** Cria os flashcards de uma aula. Se já existirem, devolve os de antes, a menos que peça para refazer. */
+async function flashcards(req: Request, lessonId: unknown, replace: boolean): Promise<Response> {
+  const auth = req.headers.get('authorization');
+  if (!auth) return json({ error: 'não autorizado' }, 403);
+  if (typeof lessonId !== 'string') return json({ error: 'Aula inválida.' }, 400);
+  const db = createClient(URL_, ANON_KEY, { global: { headers: { authorization: auth } } });
+
+  const existing = await db.from('flashcards').select('id', { count: 'exact', head: true }).eq('lesson_id', lessonId);
+  if (existing.error) throw existing.error;
+  if ((existing.count ?? 0) > 0 && !replace) return json({ count: existing.count });
+
+  const [lesson, outputs] = await Promise.all([
+    db.from('lessons').select('id, title, notes').eq('id', lessonId).maybeSingle(),
+    db.from('lesson_outputs').select('kind, content_md').eq('lesson_id', lessonId),
+  ]);
+  if (lesson.error || outputs.error) throw lesson.error ?? outputs.error;
+  if (!lesson.data) return json({ error: 'Aula não encontrada.' }, 404);
+  const out = (kind: string) => outputs.data?.find((o) => o.kind === kind)?.content_md;
+  const base = out('rewrite') ?? out('summary') ?? (await transcriptOf(db, lessonId));
+  if (!base.trim()) return json({ error: 'A aula ainda não tem texto.' }, 409);
+  const notes = (lesson.data.notes ?? '').trim();
+  const text = notes ? `${base}\n\n## Anotações do aluno (dê prioridade ao que ele marcou)\n\n${notes}` : base;
+
+  const cards = await makeFlashcards(flashcardsPrompt(lesson.data.title, text));
+  // Guarda quais eram os antigos e só apaga depois que os novos entraram: uma falha não deixa a aula sem cartões.
+  const old = replace ? await db.from('flashcards').select('id').eq('lesson_id', lessonId) : { data: [], error: null };
+  if (old.error) throw old.error;
+  const ins = await db.from('flashcards').insert(cards.map((c) => ({ ...c, lesson_id: lessonId })));
+  if (ins.error) throw ins.error;
+  const oldIds = (old.data ?? []).map((r) => r.id as string);
+  if (oldIds.length) {
+    const del = await db.from('flashcards').delete().in('id', oldIds);
+    if (del.error) throw del.error;
+  }
+  return json({ count: cards.length });
+}
+
 /** Frase curta para a tela: o detalhe técnico fica no log da função. */
-function combineErrorText(e: unknown): string {
+function aiErrorText(e: unknown, action: string): string {
   if (e instanceof QuotaError) return e.message;
-  if (e instanceof GeminiTimeoutError) return 'O Gemini demorou demais para responder. Tente juntar menos aulas de uma vez, ou tente de novo.';
+  if (e instanceof GeminiTimeoutError) return `O Gemini demorou demais para responder. Tente ${action} de novo${action === 'juntar as aulas' ? ', com menos aulas de uma vez' : ''}.`;
   // Mostra o motivo que o Google deu: ajuda a saber se é limite por minuto ou sobrecarga.
   if (e instanceof RateLimitError) {
     const what = e.status === 503 ? 'está sobrecarregado' : 'recusou o pedido';
     return `O Gemini ${what} agora, também nos modelos reserva (erro ${e.status || '?'}${e.reason ? `: ${e.reason}` : ''}). Tente de novo em alguns minutos.`;
   }
-  return `Não deu para juntar as aulas: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
+  return `Não deu para ${action}: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'método não permitido' }, 405);
   const body = await req.json().catch(() => ({}));
+  if (body?.flashcards !== undefined) {
+    try {
+      return await flashcards(req, body.flashcards, body.replace === true);
+    } catch (e) {
+      console.error(e);
+      return json({ error: aiErrorText(e, 'criar os flashcards') }, 500);
+    }
+  }
   if (body?.combine !== undefined) {
     try {
       return await combine(req, body.combine, body.requestKey);
     } catch (e) {
       console.error(e);
-      return json({ error: combineErrorText(e) }, 500);
+      return json({ error: aiErrorText(e, 'juntar as aulas') }, 500);
     }
   }
   const { lessonId } = body ?? {};

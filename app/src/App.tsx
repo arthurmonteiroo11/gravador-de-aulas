@@ -6,12 +6,20 @@ import LessonsScreen, { type OpenFocus } from './screens/LessonsScreen';
 import RecordScreen from './screens/RecordScreen';
 import LessonScreen from './screens/LessonScreen';
 import StudyScreen from './screens/StudyScreen';
+import ImportScreen from './screens/ImportScreen';
+import ReviewScreen from './screens/ReviewScreen';
+import PrintScreen from './screens/PrintScreen';
+import FoldersScreen from './screens/FoldersScreen';
 
 type View =
   | { name: 'list' }
   | { name: 'record' }
   | { name: 'lesson'; id: string; focus?: OpenFocus; from?: string }
-  | { name: 'study'; id: string };
+  | { name: 'study'; id: string }
+  | { name: 'import' }
+  | { name: 'folders' }
+  | { name: 'review'; lessonId?: string; title: string; back: View }
+  | { name: 'print'; id: string; back: View };
 
 function SignedIn({ userId }: { userId: string }) {
   const [view, setView] = useState<View>({ name: 'list' });
@@ -22,16 +30,42 @@ function SignedIn({ userId }: { userId: string }) {
     window.scrollTo(0, 0);
   }, [view]);
 
+  const list = () => setView({ name: 'list' });
+
   if (view.name === 'record') {
-    return <RecordScreen subjects={subjects} onDone={() => setView({ name: 'list' })} onCancel={() => setView({ name: 'list' })} />;
+    return <RecordScreen subjects={subjects} onDone={list} onCancel={list} />;
+  }
+  if (view.name === 'import') {
+    return <ImportScreen folders={subjects} onDone={(id) => setView({ name: 'lesson', id })} onCancel={list} />;
+  }
+  if (view.name === 'folders') {
+    return <FoldersScreen onBack={list} onChanged={setSubjects} />;
+  }
+  if (view.name === 'review') {
+    return <ReviewScreen key={view.lessonId ?? 'todas'} lessonId={view.lessonId} title={view.title} onBack={() => setView(view.back)} />;
+  }
+  if (view.name === 'print') {
+    return <PrintScreen lessonId={view.id} onBack={() => setView(view.back)} />;
   }
   if (view.name === 'lesson') {
     // Aberta a partir de um resumo combinado, voltar leva de novo a ele.
     const from = view.from;
-    return <LessonScreen key={view.id} lessonId={view.id} focus={view.focus} onBack={() => setView(from ? { name: 'study', id: from } : { name: 'list' })} />;
+    const here = view;
+    return (
+      <LessonScreen
+        key={view.id}
+        lessonId={view.id}
+        focus={view.focus}
+        folders={subjects}
+        onBack={() => setView(from ? { name: 'study', id: from } : { name: 'list' })}
+        onReview={(lessonId, title) => setView({ name: 'review', lessonId, title, back: here })}
+        onPrint={(id) => setView({ name: 'print', id, back: here })}
+        onDeleted={list}
+      />
+    );
   }
   if (view.name === 'study') {
-    return <StudyScreen key={view.id} id={view.id} onBack={() => setView({ name: 'list' })} onOpenLesson={(id) => setView({ name: 'lesson', id, from: view.id })} />;
+    return <StudyScreen key={view.id} id={view.id} onBack={list} onOpenLesson={(id) => setView({ name: 'lesson', id, from: view.id })} />;
   }
   return (
     <LessonsScreen
@@ -39,6 +73,9 @@ function SignedIn({ userId }: { userId: string }) {
       onOpen={(id, focus) => setView({ name: 'lesson', id, focus })}
       onSubjects={setSubjects}
       onOpenStudy={(id) => setView({ name: 'study', id })}
+      onImport={() => setView({ name: 'import' })}
+      onReview={() => setView({ name: 'review', title: 'Revisar', back: { name: 'list' } })}
+      onFolders={() => setView({ name: 'folders' })}
     />
   );
 }

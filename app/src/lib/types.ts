@@ -23,6 +23,7 @@ export type AudioChunk = {
   start_s: number;
   duration_s: number;
   path: string;
+  mime_type?: string;
 };
 
 export type Segment = {

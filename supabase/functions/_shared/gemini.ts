@@ -1,6 +1,7 @@
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
 import type { AudioPart, ModelSegment } from './types.ts';
 import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
+import { cleanCards, type Card } from './flashcards.ts';
 
 // Flash-Lite tem nível grátis com cota diária folgada e aceita áudio. Dá para trocar pelo segredo GEMINI_MODEL, sem reimplantar.
 export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-3.5-flash-lite';
@@ -122,11 +123,17 @@ async function generateWith(model: string, parts: unknown[], schema: unknown, op
   return text ? JSON.parse(text) : null;
 }
 
+/** Tipo como o Gemini espera: sem parâmetros, e mp3 com o nome que ele usa. */
+export function geminiMime(mime: string): string {
+  const pure = mime.split(';')[0].trim().toLowerCase();
+  return pure === 'audio/mpeg' ? 'audio/mp3' : pure;
+}
+
 export async function transcribeBlock(parts: AudioPart[], opts: Opts = {}): Promise<ModelSegment[]> {
   const content: unknown[] = [{ text: TRANSCRIBE_PROMPT }];
   parts.forEach((p, i) => {
     content.push({ text: `Parte ${i}` });
-    content.push({ inline_data: { mime_type: p.mimeType.split(';')[0].trim(), data: encodeBase64(p.data) } });
+    content.push({ inline_data: { mime_type: geminiMime(p.mimeType), data: encodeBase64(p.data) } });
   });
   const result = await generate(content, SEGMENTS_SCHEMA, opts);
   return Array.isArray(result) ? (result as ModelSegment[]) : [];
@@ -175,4 +182,16 @@ async function combineOnce(prompt: string, opts: Opts): Promise<{ title: string;
   const result = (await generate([{ text: prompt }], COMBINED_SCHEMA, { maxOutputTokens: 8192, ...opts })) as { title?: string; content?: string } | null;
   if (!result?.content) throw new GeminiError('Resposta sem o texto combinado');
   return { title: result.title?.trim() ?? '', content: result.content };
+}
+
+const CARDS_SCHEMA = {
+  type: 'ARRAY',
+  items: { type: 'OBJECT', properties: { front: { type: 'STRING' }, back: { type: 'STRING' } }, required: ['front', 'back'] },
+};
+
+/** Uma chamada: flashcards a partir do texto de uma aula. */
+export async function makeFlashcards(prompt: string, opts: Opts = {}): Promise<Card[]> {
+  const cards = cleanCards(await generate([{ text: prompt }], CARDS_SCHEMA, { maxOutputTokens: 4096, timeoutMs: 90_000, ...opts }));
+  if (!cards.length) throw new GeminiError('O Gemini não devolveu cartões');
+  return cards;
 }

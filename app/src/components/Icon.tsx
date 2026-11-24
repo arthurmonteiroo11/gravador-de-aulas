@@ -1,4 +1,4 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack' | 'upload' | 'download' | 'folder' | 'cards' | 'doc' | 'edit' | 'trash' | 'plus' | 'more';
 
 const PATHS: Record<Name, JSX.Element> = {
   play: <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor" />,
@@ -21,6 +21,26 @@ const PATHS: Record<Name, JSX.Element> = {
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
       <path d="m12 4 8.5 4.5L12 13 3.5 8.5Z" />
       <path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5" strokeLinecap="round" />
+    </g>
+  ),
+  upload: <path d="M12 15V4m0 0-4.5 4.5M12 4l4.5 4.5M4.5 14.5v3A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  download: <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M4.5 14.5v3A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  folder: <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6l2 2.2h7.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  cards: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <rect x="3.5" y="7" width="13" height="13" rx="2.5" />
+      <path d="M8 4h10a2.5 2.5 0 0 1 2.5 2.5v10" strokeLinecap="round" />
+    </g>
+  ),
+  doc: <path d="M7 3.5h6.5L19 9v10a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7.5 3.5ZM13 3.5V9h6M9 13h6M9 16.5h6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  edit: <path d="M14.5 5.5l4 4M4.5 19.5l1-4.5L15.8 4.7a1.8 1.8 0 0 1 2.5 0l1 1a1.8 1.8 0 0 1 0 2.5L9 18.5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  trash: <path d="M4.5 7h15M10 11v6m4-6v6M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  plus: <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  more: (
+    <g fill="currentColor">
+      <circle cx="5.5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="18.5" cy="12" r="1.8" />
     </g>
   ),
   back: <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />,

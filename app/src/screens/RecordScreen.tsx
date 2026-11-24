@@ -1,3 +1,4 @@
+import { cleanName } from '../lessons/folders';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChunkRecorder, type RecordedChunk } from '../recording/chunkRecorder';
 import { getVoiceStream, releaseVoiceStream } from '../recording/voiceFilter';
@@ -116,7 +117,7 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel, subjec
     }
     let id: string;
     try {
-      const lesson = await deps.createLesson({ title: title.trim(), subject: subject.trim() || undefined });
+      const lesson = await deps.createLesson({ title: title.trim(), subject: cleanName(subject) || undefined });
       lessonId.current = lesson.id;
       id = lesson.id;
     } catch (err) {

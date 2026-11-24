@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import TextArea from './TextArea';
+import Icon from './Icon';
 import type { SaveState } from '../lessons/useAutosave';
 
 type EditState = { busy: boolean; failed: boolean };
@@ -43,7 +44,10 @@ function EditBar({ editing, busy, failed, onEdit, onCancel, onSave }: {
           <button className="primary" onClick={onSave} disabled={busy}>{busy ? 'Salvando…' : 'Salvar'}</button>
         </>
       ) : (
-        <button className="ghost" onClick={onEdit}>Editar</button>
+        <button className="pill small" onClick={onEdit}>
+          <Icon name="edit" size={16} />
+          Editar texto
+        </button>
       )}
     </div>
   );

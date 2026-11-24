@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { putChunk, listPending, removeChunk, closeQueue, dropConnectionForTest } from './localQueue';
+import { putChunk, listPending, removeChunk, closeQueue, dropConnectionForTest, pendingKeys, getPending } from './localQueue';
 
 const chunk = (lessonId: string, idx: number) => ({
   lessonId, idx, blob: new Blob(['a'], { type: 'audio/mp4' }), startS: idx * 60, durationS: 60,
@@ -36,5 +36,17 @@ describe('localQueue', () => {
     await putChunk(chunk('l1', 0));
     await removeChunk('l1', 0);
     expect(await listPending()).toEqual([]);
+  });
+
+  it('lista só as chaves e carrega uma parte por vez', async () => {
+    await putChunk(chunk('l2', 0));
+    await putChunk(chunk('l1', 1));
+    await putChunk(chunk('l1', 0));
+    expect(await pendingKeys()).toEqual([{ lessonId: 'l1', idx: 0 }, { lessonId: 'l1', idx: 1 }, { lessonId: 'l2', idx: 0 }]);
+    expect(await pendingKeys('l2')).toEqual([{ lessonId: 'l2', idx: 0 }]);
+    const one = await getPending('l1', 1);
+    expect(one).toMatchObject({ lessonId: 'l1', idx: 1, startS: 60 });
+    expect(one?.blob.type).toBe('audio/mp4');
+    expect(await getPending('l9', 0)).toBeNull();
   });
 });

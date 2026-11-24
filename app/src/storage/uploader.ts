@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { listPending, removeChunk } from './localQueue';
+import { getPending, pendingKeys, removeChunk } from './localQueue';
 import { errorText, recordProblem } from '../lib/diagnostics';
 
 type Client = Pick<typeof supabase, 'storage' | 'from'>;
@@ -18,8 +18,10 @@ function withTimeout<T>(promise: PromiseLike<T>, ms: number, what: string): Prom
   });
 }
 
+const EXTENSIONS: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/mpeg': 'mp3' };
+
 export const chunkPath = (userId: string, lessonId: string, idx: number, mime: string) =>
-  `${userId}/${lessonId}/${idx}.${mime.startsWith('audio/mp4') ? 'm4a' : 'webm'}`;
+  `${userId}/${lessonId}/${idx}.${EXTENSIONS[mime.split(';')[0].trim()] ?? 'webm'}`;
 
 /** Sobe as partes guardadas no aparelho. Só tira da fila depois do arquivo e da linha gravados. */
 export async function uploadPending(
@@ -31,12 +33,21 @@ export async function uploadPending(
   let failed = 0;
   let pending;
   try {
-    pending = await withTimeout(listPending(), timeoutMs, 'Ler as partes do aparelho');
+    pending = await withTimeout(pendingKeys(), timeoutMs, 'Ler as partes do aparelho');
   } catch (err) {
     recordProblem('upload', `Não consegui ler as partes salvas no aparelho: ${await errorText(err)}`);
     return { uploaded: 0, failed: 0 };
   }
-  for (const chunk of pending) {
+  for (const key of pending) {
+    let chunk;
+    try {
+      chunk = await withTimeout(getPending(key.lessonId, key.idx), timeoutMs, 'Ler a parte do aparelho');
+    } catch (err) {
+      failed++;
+      recordProblem('upload', await errorText(err));
+      continue;
+    }
+    if (!chunk) continue;
     // 'audio/mp4;codecs=...' vira 'audio/mp4': o Gemini e o Storage esperam o tipo puro.
     const mime = (chunk.blob.type || DEFAULT_MIME).split(';')[0].trim();
     const path = chunkPath(userId, chunk.lessonId, chunk.idx, mime);

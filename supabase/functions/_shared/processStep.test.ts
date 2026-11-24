@@ -175,3 +175,15 @@ Deno.test('cota do Gemini esgotada encerra a aula com erro claro (dá para tenta
   assertEquals(state.lesson.status, 'error');
   assertEquals(state.lesson.error_message, 'Sem cota');
 });
+
+Deno.test('arquivo antigo importado agora: o envio ainda está a caminho, não vira erro', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 40, recorded_at: '2026-11-20T08:00:00Z', created_at: '2026-11-24T10:25:00Z' }, 0, ok);
+  assertEquals((await processStep('l', deps)).status, 'uploading');
+  assertEquals(state.lesson.status, 'uploading');
+});
+
+Deno.test('arquivo antigo sem created_at (SQL antigo) continua usando recorded_at', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 40, recorded_at: '2026-11-20T08:00:00Z' }, 0, ok);
+  await processStep('l', deps);
+  assertEquals(state.lesson.status, 'error');
+});

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lesson } from '../lib/types';
 import { getLesson, requestProcessing } from '../lessons/api';
-import { listPending } from '../storage/localQueue';
+import { pendingKeys } from '../storage/localQueue';
 import { errorText, lastProblems, recordProblem } from '../lib/diagnostics';
 import PipelineStatus from '../components/PipelineStatus';
 import { uploadPending } from '../storage/uploader';
@@ -12,6 +12,7 @@ import { formatClock, formatDay, formatDuration, statusLabel } from '../lessons/
 import { subjectTone } from '../lessons/subjectTone';
 import { Highlight, type OpenFocus } from './LessonsScreen';
 import Icon from '../components/Icon';
+import LessonActions from '../components/LessonActions';
 import { EditableList, EditableMarkdown, NotesEditor } from '../components/Editable';
 import { saveNotes, saveOutput, saveSegment } from '../lessons/study';
 import { useAutosave } from '../lessons/useAutosave';
@@ -20,9 +21,17 @@ import type { CSSProperties } from 'react';
 type Tab = 'summary' | 'rewrite' | 'transcript' | 'notes';
 const TABS: Array<[Tab, string]> = [['summary', 'Resumo'], ['rewrite', 'Reescrita'], ['transcript', 'Transcrição'], ['notes', 'Anotações']];
 
-type Props = { lessonId: string; onBack: () => void; focus?: OpenFocus };
+type Props = {
+  lessonId: string;
+  onBack: () => void;
+  focus?: OpenFocus;
+  folders?: string[];
+  onReview?: (lessonId: string, title: string) => void;
+  onPrint?: (lessonId: string) => void;
+  onDeleted?: () => void;
+};
 
-export default function LessonScreen({ lessonId, onBack, focus }: Props) {
+export default function LessonScreen({ lessonId, onBack, focus, folders = [], onReview, onPrint, onDeleted }: Props) {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [content, setContent] = useState<LessonContent | null>(null);
   const [tab, setTab] = useState<Tab>(focus?.tab ?? 'summary');
@@ -66,7 +75,7 @@ export default function LessonScreen({ lessonId, onBack, focus }: Props) {
         }
       }
       const c = await loadLessonContent(lessonId);
-      const pending = await listPending(lessonId).catch(async (err) => {
+      const pending = await pendingKeys(lessonId).catch(async (err) => {
         recordProblem('upload', `Não consegui ler as partes salvas no aparelho: ${await errorText(err)}`);
         return [];
       });
@@ -168,6 +177,19 @@ export default function LessonScreen({ lessonId, onBack, focus }: Props) {
         <span className="num">{formatDuration(lesson.duration_s)}</span>
         {lesson.status !== 'ready' && <span>{statusLabel(lesson)}</span>}
       </p>
+
+      <div>
+        <LessonActions
+          lesson={lesson}
+          chunks={content.chunks}
+          urls={urls}
+          folders={folders}
+          onReview={() => onReview?.(lesson.id, lesson.title)}
+          onPrint={() => onPrint?.(lesson.id)}
+          onChanged={(patch) => setLesson((l) => l && { ...l, ...patch })}
+          onDeleted={() => (onDeleted ?? onBack)()}
+        />
+      </div>
 
       <div>
         {lesson.audio_deleted ? (

@@ -54,9 +54,9 @@ export async function combineLessons(lessonIds: string[], requestKey: string): P
 const OFFLINE = 'Não deu para juntar as aulas. Verifique a internet e tente de novo.';
 
 /** O servidor responde {"error": "..."}; mostra só essa frase. */
-export async function combineError(error: unknown): Promise<string> {
+export async function combineError(error: unknown, offline = OFFLINE): Promise<string> {
   const ctx = (error as { context?: { json?: () => Promise<unknown> } })?.context;
-  if (typeof ctx?.json !== 'function') return OFFLINE;
+  if (typeof ctx?.json !== 'function') return offline;
   const body = (await ctx.json().catch(() => null)) as { error?: unknown } | null;
-  return typeof body?.error === 'string' && body.error ? body.error : OFFLINE;
+  return typeof body?.error === 'string' && body.error ? body.error : offline;
 }

@@ -7,7 +7,9 @@ import { startPoller } from '../lessons/poller';
 import { retryLesson } from '../lessons/retry';
 import { describeLoadError } from '../lessons/errors';
 import { errorText, recordProblem } from '../lib/diagnostics';
-import { filterLessons, searchText, splitMatches, subjectsOf, type TextHit } from '../lessons/search';
+import { filterLessons, searchText, splitMatches, type TextHit } from '../lessons/search';
+import { listFolders, mergeFolders } from '../lessons/folders';
+import { dueCount } from '../lessons/flashcards';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
 import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
@@ -18,6 +20,9 @@ type Props = {
   onOpen: (id: string, focus?: OpenFocus) => void;
   onSubjects?: (subjects: string[]) => void;
   onOpenStudy: (id: string) => void;
+  onImport?: () => void;
+  onReview?: () => void;
+  onFolders?: () => void;
 };
 
 const POLL_MS = 10_000;
@@ -34,7 +39,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy }: Props) {
+export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy, onImport, onReview, onFolders }: Props) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -80,7 +85,13 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
     }, POLL_MS);
   }, [refresh]);
 
-  const subjects = useMemo(() => subjectsOf(lessons ?? []), [lessons]);
+  const [savedFolders, setSavedFolders] = useState<string[]>([]);
+  const [due, setDue] = useState(0);
+  useEffect(() => {
+    listFolders().then(setSavedFolders).catch(() => {});
+    dueCount().then(setDue).catch(() => setDue(0));
+  }, []);
+  const subjects = useMemo(() => mergeFolders(savedFolders, lessons ?? []), [savedFolders, lessons]);
   useEffect(() => {
     onSubjects?.(subjects);
   }, [subjects, onSubjects]);
@@ -187,7 +198,17 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
         />
       </div>
 
-      {subjects.length > 0 && (
+      {!picked && due > 0 && (
+        <button className="review-banner" onClick={onReview}>
+          <span className="review-icon"><Icon name="cards" size={20} /></span>
+          <span>
+            <strong>Revisar flashcards</strong>
+            <small>{due} {due === 1 ? 'cartão para hoje' : 'cartões para hoje'}</small>
+          </span>
+        </button>
+      )}
+
+      {(subjects.length > 0 || onFolders) && (
         <div className="chips" role="group" aria-label="Filtrar por matéria">
           <button className="chip" aria-pressed={subject === null} onClick={() => setSubject(null)}>Todas</button>
           {subjects.map((s) => (
@@ -196,6 +217,12 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
               {s}
             </button>
           ))}
+          {onFolders && !picked && (
+            <button className="chip chip-quiet" onClick={onFolders}>
+              <Icon name="folder" size={15} />
+              Pastas
+            </button>
+          )}
         </div>
       )}
 
@@ -302,10 +329,17 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
           </button>
         </div>
       ) : (
-        <button className="fab" onClick={onRecord}>
-          <Icon name="mic" size={20} />
-          Gravar aula
-        </button>
+        <div className="fab-group">
+          {onImport && (
+            <button className="fab-side" onClick={onImport} aria-label="Importar áudio ou vídeo">
+              <Icon name="upload" size={20} />
+            </button>
+          )}
+          <button className="fab" onClick={onRecord}>
+            <Icon name="mic" size={20} />
+            Gravar aula
+          </button>
+        </div>
       )}
     </section>
   );

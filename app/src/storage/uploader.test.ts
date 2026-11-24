@@ -51,5 +51,7 @@ describe('uploadPending', () => {
 
   it('caminho usa webm quando o formato não é mp4', () => {
     expect(chunkPath('u', 'l', 3, 'audio/webm;codecs=opus')).toBe('u/l/3.webm');
+    expect(chunkPath('u', 'l', 4, 'audio/aac')).toBe('u/l/4.aac');
+    expect(chunkPath('u', 'l', 5, 'audio/mpeg')).toBe('u/l/5.mp3');
   });
 });

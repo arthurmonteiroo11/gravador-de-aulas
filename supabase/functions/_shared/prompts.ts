@@ -28,3 +28,15 @@ Responda com "title" (um título curto para o material, sem data) e "content" (o
 
 Aulas:
 `;
+
+export const FLASHCARDS_PROMPT = `Abaixo está o material de uma aula em português.
+
+Crie flashcards para estudar esse conteúdo, em português:
+- Entre 8 e 15 cartões, cobrindo os pontos mais importantes, sem repetir.
+- "front": uma pergunta curta e direta (no máximo 20 palavras). Nada de "Segundo o professor...".
+- "back": a resposta em uma ou duas frases curtas.
+- Prefira definições, causas e consequências, fórmulas, datas e comparações.
+- Não invente nada que não esteja no material.
+
+Material:
+`;

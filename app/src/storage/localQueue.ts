@@ -56,7 +56,24 @@ export async function listPending(lessonId?: string): Promise<PendingChunk[]> {
   return all
     .filter((c) => !lessonId || c.lessonId === lessonId)
     .sort((a, b) => a.lessonId.localeCompare(b.lessonId) || a.idx - b.idx)
-    .map(({ data, type, ...rest }) => ({ ...rest, blob: new Blob([data], { type }) }));
+    .map(toPending);
+}
+
+const toPending = ({ data, type, ...rest }: StoredChunk): PendingChunk => ({ ...rest, blob: new Blob([data], { type }) });
+
+/** Só as chaves das partes guardadas, sem os bytes: uma importação longa tem 100+ MB. */
+export async function pendingKeys(lessonId?: string): Promise<{ lessonId: string; idx: number }[]> {
+  const keys = (await withDb((d) => d.getAllKeys(STORE))) as unknown as [string, number][];
+  return keys
+    .map(([l, idx]) => ({ lessonId: l, idx }))
+    .filter((k) => !lessonId || k.lessonId === lessonId)
+    .sort((a, b) => a.lessonId.localeCompare(b.lessonId) || a.idx - b.idx);
+}
+
+/** Uma parte por vez, para não carregar a fila inteira na memória. */
+export async function getPending(lessonId: string, idx: number): Promise<PendingChunk | null> {
+  const stored = (await withDb((d) => d.get(STORE, [lessonId, idx]))) as StoredChunk | undefined;
+  return stored ? toPending(stored) : null;
 }
 
 export async function removeChunk(lessonId: string, idx: number): Promise<void> {

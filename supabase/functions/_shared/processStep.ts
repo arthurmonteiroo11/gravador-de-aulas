@@ -65,7 +65,9 @@ export async function processUntilDone(lessonId: string, deps: StepDeps, budgetM
 async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
   if (lesson.status === 'uploading') {
     const chunks = await deps.listChunks();
-    const endedAt = new Date(lesson.recorded_at).getTime() + lesson.duration_s * 1000;
+    // Conta a partir de quando a aula chegou ao app: um arquivo antigo importado hoje ainda está subindo.
+    const startedAt = Math.max(Date.parse(lesson.recorded_at), lesson.created_at ? Date.parse(lesson.created_at) : 0);
+    const endedAt = startedAt + lesson.duration_s * 1000;
     const stale = deps.now().getTime() - endedAt > UPLOAD_GRACE_MS;
     const complete = lesson.expected_chunks !== null && chunks.length >= lesson.expected_chunks;
     if (!complete && !stale) return result(lesson);
@@ -135,10 +137,16 @@ async function skipOrRetryBlock(lesson: LessonRow, deps: StepDeps, b: number, e:
     return result({ ...lesson, block_failures: failures });
   }
   await deps.replaceSegments(b, []);
+  // Partes importadas não têm 60 s cravados: o trecho sai do horário real das partes.
+  const block = groupIntoBlocks(await deps.listChunks().catch(() => []))[b] ?? [];
+  const last = block[block.length - 1];
+  const span = block.length && last
+    ? `${clock(block[0].start_s)}–${clock(last.start_s + last.duration_s)}`
+    : `${clock(b * BLOCK_SIZE * 60)}–${clock((b + 1) * BLOCK_SIZE * 60)}`;
   const patch = {
     processed_blocks: b + 1,
     block_failures: 0,
-    error_message: `Não foi possível transcrever o trecho ${clock(b * BLOCK_SIZE * 60)}–${clock((b + 1) * BLOCK_SIZE * 60)}. Motivo: ${reason}`,
+    error_message: `Não foi possível transcrever o trecho ${span}. Motivo: ${reason}`,
   };
   await deps.updateLesson(patch);
   return result({ ...lesson, ...patch });

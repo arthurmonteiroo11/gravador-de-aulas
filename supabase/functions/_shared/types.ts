@@ -7,6 +7,8 @@ export type LessonRow = {
   total_blocks: number | null;
   block_failures: number;
   recorded_at: string;
+  /** Quando a aula foi criada no app. Numa importação, recorded_at é a data do arquivo, bem anterior. */
+  created_at?: string | null;
   duration_s: number;
   error_message?: string | null;
 };

@@ -12,7 +12,7 @@ export async function loadLessonContent(lessonId: string): Promise<LessonContent
   const [segs, outs, chunks] = await Promise.all([
     supabase.from('transcript_segments').select('id, start_s, end_s, text, speaker').eq('lesson_id', lessonId).order('start_s'),
     supabase.from('lesson_outputs').select('kind, content_md').eq('lesson_id', lessonId),
-    supabase.from('audio_chunks').select('lesson_id, idx, start_s, duration_s, path').eq('lesson_id', lessonId).order('idx'),
+    supabase.from('audio_chunks').select('lesson_id, idx, start_s, duration_s, path, mime_type').eq('lesson_id', lessonId).order('idx'),
   ]);
   const out = (kind: string) => (outs.data ?? []).find((o) => o.kind === kind)?.content_md ?? null;
   return { segments: (segs.data ?? []) as Segment[], rewrite: out('rewrite'), summary: out('summary'), chunks: (chunks.data ?? []) as AudioChunk[] };
