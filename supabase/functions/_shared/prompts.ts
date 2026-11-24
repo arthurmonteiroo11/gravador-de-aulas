@@ -6,7 +6,10 @@ Transcreva a fala de quem fala para a turma: o professor e também alunos que pe
 - Não invente nada. Se uma parte estiver em silêncio, não gere linhas para ela.
 - Divida em trechos curtos (uma ou duas frases) e comece um trecho novo sempre que a pessoa que fala mudar.
 - Para cada trecho informe: "part" (número da parte), "start" e "end" (segundos desde o início DAQUELA parte), "text" e "speaker".
-- "speaker": "Professor" para quem dá a aula; "Aluno 1", "Aluno 2"... para os outros, na ordem em que aparecem. Se for um debate sem professor claro, use "Falante 1", "Falante 2"... A mesma voz mantém o mesmo rótulo em toda a resposta.`;
+- "speaker": quem está falando naquele trecho. Preste atenção no timbre, no tom e no jeito de falar: quando a voz muda, o rótulo muda.
+  - Use "Professor" só quando estiver claro que é uma aula e essa pessoa ensina; os outros viram "Aluno 1", "Aluno 2"...
+  - Em qualquer outro caso (conversa, debate, entrevista, música com mais de um cantor), use "Falante 1", "Falante 2"..., na ordem em que aparecem.
+  - Não junte vozes diferentes num rótulo só. A mesma voz mantém o mesmo rótulo em toda a resposta.`;
 
 export const REWRITE_PROMPT = `Abaixo está a transcrição de uma aula em português, com marcação de tempo.
 
