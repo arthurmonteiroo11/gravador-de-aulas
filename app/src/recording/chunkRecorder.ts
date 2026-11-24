@@ -43,6 +43,11 @@ export class ChunkRecorder {
     return Math.round((this.accumulatedMs + running) / 1000);
   }
 
+  /** Quantas partes já foram fechadas (emitidas ou em emissão). */
+  get chunkCount(): number {
+    return this.nextIdx;
+  }
+
   start(): void {
     if (this.state !== 'idle') return;
     this.state = 'recording';
