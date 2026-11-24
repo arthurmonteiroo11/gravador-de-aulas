@@ -85,7 +85,7 @@ Deno.test(`bloco que falha ${MAX_BLOCK_FAILURES} vezes é pulado e a aula segue`
   assertEquals(state.lesson.status, 'processing');
   assertEquals(state.lesson.processed_blocks, 1);
   assertEquals(state.segments.get(0), []);
-  assertEquals(state.lesson.error_message, 'Não foi possível transcrever o trecho 00:00–10:00.');
+  assertEquals(state.lesson.error_message, 'Não foi possível transcrever o trecho 00:00–10:00. Motivo: Error: quebrou');
 });
 
 Deno.test('outra chamada em andamento: não faz nada', async () => {
@@ -126,4 +126,11 @@ Deno.test('aula toda em silêncio fica pronta sem chamar a IA', async () => {
   assertEquals(state.lesson.status, 'ready');
   assertEquals(state.rewriteCalls, 0);
   assertEquals(state.outputs?.summary, 'Nenhuma fala detectada nesta gravação.');
+});
+
+Deno.test('aula sem nenhuma parte depois do prazo vira erro em vez de ficar enviando', async () => {
+  const { deps, state } = fakeDeps({ status: 'uploading', expected_chunks: 2 }, 0, () => Promise.resolve([]));
+  deps.now = () => new Date('2026-11-24T13:00:00Z');
+  await processStep('l', deps);
+  assertEquals(state.lesson.status, 'error');
 });

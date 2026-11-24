@@ -42,11 +42,14 @@ async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
   if (lesson.status === 'uploading') {
     const chunks = await deps.listChunks();
     const endedAt = new Date(lesson.recorded_at).getTime() + lesson.duration_s * 1000;
-    const stale = deps.now().getTime() - endedAt > UPLOAD_GRACE_MS && chunks.length > 0;
+    const stale = deps.now().getTime() - endedAt > UPLOAD_GRACE_MS;
     const complete = lesson.expected_chunks !== null && chunks.length >= lesson.expected_chunks;
     if (!complete && !stale) return result(lesson);
     if (chunks.length === 0) {
-      const patch = { status: 'error' as const, error_message: 'Nenhum áudio foi gravado.' };
+      const patch = {
+        status: 'error' as const,
+        error_message: complete ? 'Nenhum áudio foi gravado.' : 'Nenhuma parte da gravação chegou ao servidor.',
+      };
       await deps.updateLesson(patch);
       return result({ ...lesson, ...patch });
     }
@@ -69,7 +72,7 @@ async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
       return result({ ...lesson, ...patch });
     } catch (e) {
       if (e instanceof RateLimitError) return result(lesson);
-      return skipOrRetryBlock(lesson, deps, b);
+      return skipOrRetryBlock(lesson, deps, b, e);
     }
   }
 
@@ -86,17 +89,20 @@ async function step(lesson: LessonRow, deps: StepDeps): Promise<StepResult> {
 }
 
 /** Bloco com erro: tenta de novo; na 3ª falha, pula o trecho para não perder a aula inteira. */
-async function skipOrRetryBlock(lesson: LessonRow, deps: StepDeps, b: number): Promise<StepResult> {
+async function skipOrRetryBlock(lesson: LessonRow, deps: StepDeps, b: number, e: unknown): Promise<StepResult> {
   const failures = lesson.block_failures + 1;
+  // O motivo fica registrado para aparecer na tela e no diagnóstico.
+  const reason = String(e).slice(0, 300);
+  console.error(`bloco ${b} falhou (${failures}/${MAX_BLOCK_FAILURES}): ${reason}`);
   if (failures < MAX_BLOCK_FAILURES) {
-    await deps.updateLesson({ block_failures: failures });
+    await deps.updateLesson({ block_failures: failures, error_message: `Tentativa ${failures} falhou: ${reason}` });
     return result({ ...lesson, block_failures: failures });
   }
   await deps.replaceSegments(b, []);
   const patch = {
     processed_blocks: b + 1,
     block_failures: 0,
-    error_message: `Não foi possível transcrever o trecho ${clock(b * BLOCK_SIZE * 60)}–${clock((b + 1) * BLOCK_SIZE * 60)}.`,
+    error_message: `Não foi possível transcrever o trecho ${clock(b * BLOCK_SIZE * 60)}–${clock((b + 1) * BLOCK_SIZE * 60)}. Motivo: ${reason}`,
   };
   await deps.updateLesson(patch);
   return result({ ...lesson, ...patch });

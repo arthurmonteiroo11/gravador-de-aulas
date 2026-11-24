@@ -2,7 +2,8 @@ import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
 import type { AudioPart, ModelSegment } from './types.ts';
 import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
 
-export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash';
+// Apelido que o Google mantém apontando para o Flash atual: não quebra quando uma versão é aposentada.
+export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-flash-latest';
 
 export class RateLimitError extends Error {}
 export class GeminiError extends Error {}
@@ -25,7 +26,7 @@ const OUTPUTS_SCHEMA = {
 };
 
 async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<unknown> {
-  const apiKey = opts.apiKey ?? Deno.env.get('GEMINI_API_KEY');
+  const apiKey = (opts.apiKey ?? Deno.env.get('GEMINI_API_KEY'))?.trim();
   if (!apiKey) throw new GeminiError('GEMINI_API_KEY não configurada');
   const fetcher = opts.fetcher ?? fetch;
   const model = opts.model ?? GEMINI_MODEL;
@@ -48,7 +49,7 @@ export async function transcribeBlock(parts: AudioPart[], opts: Opts = {}): Prom
   const content: unknown[] = [{ text: TRANSCRIBE_PROMPT }];
   parts.forEach((p, i) => {
     content.push({ text: `Parte ${i}` });
-    content.push({ inline_data: { mime_type: p.mimeType, data: encodeBase64(p.data) } });
+    content.push({ inline_data: { mime_type: p.mimeType.split(';')[0].trim(), data: encodeBase64(p.data) } });
   });
   const result = await generate(content, SEGMENTS_SCHEMA, opts);
   return Array.isArray(result) ? (result as ModelSegment[]) : [];
