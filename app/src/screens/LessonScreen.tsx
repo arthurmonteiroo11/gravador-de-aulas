@@ -167,7 +167,8 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
     </button>
   );
   if (!lesson || !content) return <section>{back}<p className="muted">Carregando…</p></section>;
-  const showWho = manySpeakers(content.segments) ? speakerChanges(content.segments) : [];
+  // O nome aparece no texto a cada troca de voz; com uma voz só, aparece uma vez, no começo.
+  const showWho = speakerChanges(content.segments);
 
   const pendingText = lesson.status === 'error' ? `Erro: ${lesson.error_message ?? 'tente de novo mais tarde.'}` : `${statusLabel(lesson)}…`;
   const total = lessonLength(content.chunks);
