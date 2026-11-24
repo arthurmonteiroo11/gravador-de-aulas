@@ -17,10 +17,10 @@ export async function pushState(): Promise<PushState> {
   return sub ? 'on' : 'off';
 }
 
-function keyBytes(b64: string): Uint8Array<ArrayBuffer> {
+function keyBytes(b64: string): ArrayBuffer {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
   const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + pad);
-  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0)).buffer;
 }
 
 async function call(body: Record<string, unknown>, fallback: string) {
