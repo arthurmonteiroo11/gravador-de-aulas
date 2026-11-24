@@ -59,8 +59,17 @@ function depsFor(lessonId: string): StepDeps {
     },
     replaceSegments: async (blockIdx, segs) =>
       void must(await db.rpc('replace_block_segments', { p_lesson: lessonId, p_block: blockIdx, p_segments: segs })),
-    listSegments: async () =>
-      must(await db.from('transcript_segments').select('start_s, end_s, text, speaker').eq('lesson_id', lessonId).order('start_s')) ?? [],
+    // Em páginas: o banco entrega no máximo 1000 linhas, e uma aula de 1h30 pode passar disso.
+    listSegments: async () => {
+      const out = [];
+      for (let from = 0; from < 50_000; from += 1000) {
+        const page = must(await db.from('transcript_segments').select('start_s, end_s, text, speaker').eq('lesson_id', lessonId)
+          .order('start_s').order('id').range(from, from + 999)) ?? [];
+        out.push(...page);
+        if (page.length < 1000) break;
+      }
+      return out;
+    },
     saveOutputs: async ({ rewrite, summary }) =>
       void must(await db.from('lesson_outputs').upsert([
         { lesson_id: lessonId, kind: 'rewrite', content_md: rewrite, model: GEMINI_MODEL },
@@ -135,6 +144,7 @@ async function segmentsOf(db: Db, lessonId: string): Promise<{ start_s: number; 
       .select('start_s, text')
       .eq('lesson_id', lessonId)
       .order('start_s')
+      .order('id')
       .range(from, from + page - 1);
     if (error) throw error;
     out.push(...((data ?? []) as { start_s: number; text: string }[]));
