@@ -10,17 +10,19 @@ import { errorText, recordProblem } from '../lib/diagnostics';
 import { filterLessons, searchText, splitMatches, subjectsOf, type TextHit } from '../lessons/search';
 import { subjectTone } from '../lessons/subjectTone';
 import Icon from '../components/Icon';
+import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
 
-export type OpenFocus = { query?: string; startS?: number | null; tab?: 'summary' | 'rewrite' | 'transcript' };
+export type OpenFocus = { query?: string; startS?: number | null; tab?: 'summary' | 'rewrite' | 'transcript' | 'notes' };
 type Props = {
   onRecord: () => void;
   onOpen: (id: string, focus?: OpenFocus) => void;
   onSubjects?: (subjects: string[]) => void;
+  onOpenStudy: (id: string) => void;
 };
 
 const POLL_MS = 10_000;
 const SEARCH_DELAY_MS = 250;
-const WHERE: Record<TextHit['where'], string> = { transcript: 'Na transcrição', summary: 'No resumo', rewrite: 'Na reescrita' };
+const WHERE: Record<TextHit['where'], string> = { transcript: 'Na transcrição', summary: 'No resumo', rewrite: 'Na reescrita', notes: 'Nas anotações' };
 
 const tone = (subject: string | null) => ({ '--tone': subjectTone(subject) }) as CSSProperties;
 
@@ -32,12 +34,16 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
+export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStudy }: Props) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [subject, setSubject] = useState<string | null>(null);
   const [hits, setHits] = useState<TextHit[]>([]);
+  const [studies, setStudies] = useState<StudyNote[]>([]);
+  // null: modo normal. Um conjunto: escolhendo aulas para juntar.
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [combining, setCombining] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,6 +58,11 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
   lessonsRef.current = lessons;
 
   // Enquanto o app está aberto, empurra o processamento das aulas pendentes, uma rodada por vez.
+  useEffect(() => {
+    // Sem a tabela nova no banco, a lista de aulas continua funcionando.
+    listStudyNotes().then(setStudies).catch(() => setStudies([]));
+  }, []);
+
   useEffect(() => {
     void refresh();
     return startPoller(async () => {
@@ -101,6 +112,50 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
   });
   const searching = query.trim().length >= 2;
 
+  const shownStudies = studies.filter((n) => {
+    const ls = n.lesson_ids.map((id) => byId.get(id)).filter((l): l is Lesson => Boolean(l));
+    return (!subject || ls.some((l) => l.subject === subject)) && filterLessons([{ title: n.title, subject: null }], { subject: null, query }).length > 0;
+  });
+
+  const readyCount = (lessons ?? []).filter((l) => l.status === 'ready').length;
+
+  const toggle = (id: string) => {
+    if (!picked) return;
+    const next = new Set(picked);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setPicked(next);
+  };
+
+  // Só contam as escolhidas que estão à vista (a busca ou o filtro podem esconder alguma).
+  const chosen = picked ? shown.filter((l) => picked.has(l.id) && l.status === 'ready').map((l) => l.id) : [];
+  const requestKey = useRef<{ ids: string; key: string } | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const combine = async () => {
+    if (chosen.length < 2) return;
+    setCombining(true);
+    setError(null);
+    // Mesma escolha, mesma chave: tentar de novo depois de uma queda não gera um segundo resumo.
+    const ids = [...chosen].sort().join(',');
+    if (requestKey.current?.ids !== ids) requestKey.current = { ids, key: crypto.randomUUID() };
+    try {
+      const id = await combineLessons(chosen, requestKey.current.key);
+      if (alive.current) onOpenStudy(id);
+    } catch (err) {
+      if (!alive.current) return;
+      setError((err as Error).message);
+      setCombining(false);
+      listStudyNotes().then(setStudies).catch(() => {});
+    }
+  };
+
   const finalize = async (id: string) => {
     try {
       await finalizeAbandoned(id);
@@ -112,7 +167,13 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
 
   return (
     <section className="enter">
-      <h1 className="title">Aulas</h1>
+      <div className="head">
+        <h1 className="title">{picked ? 'Juntar aulas' : 'Aulas'}</h1>
+        {readyCount > 1 && !picked && (
+          <button className="ghost" onClick={() => setPicked(new Set())}>Selecionar</button>
+        )}
+      </div>
+      {picked && <p className="subtitle">Escolha as aulas para virar um resumo só. O texto sai organizado por tema.</p>}
 
       <div className="search">
         <Icon name="search" size={18} />
@@ -170,6 +231,26 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
           </>
         )}
 
+        {!picked && shownStudies.length > 0 && (
+          <>
+            <p className="section-label">Resumos combinados</p>
+            <ul className="lesson-list">
+              {shownStudies.map((n) => (
+                <li key={n.id}>
+                  <button className="lesson-row study-row" onClick={() => onOpenStudy(n.id)}>
+                    <span className="lesson-title"><Highlight text={n.title} query={query} /></span>
+                    <span className="lesson-meta">
+                      <span className="stack"><Icon name="stack" size={15} />{n.lesson_ids.length} aulas</span>
+                      <span>{formatDay(n.created_at)}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {!searching && <p className="section-label">Aulas</p>}
+          </>
+        )}
+
         {searching && (shown.length > 0 || textHits.length === 0) && (
           <p className="section-label">{shown.length ? 'Aulas' : 'Nada encontrado'}</p>
         )}
@@ -178,7 +259,15 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
         <ul className="lesson-list">
           {shown.map((l) => (
             <li key={l.id}>
-              <button className="lesson-row" onClick={() => onOpen(l.id, searching ? { query } : undefined)} style={tone(l.subject)}>
+              <button
+                className="lesson-row"
+                onClick={() => (picked ? toggle(l.id) : onOpen(l.id, searching ? { query } : undefined))}
+                style={tone(l.subject)}
+                data-selectable={picked ? 'true' : undefined}
+                aria-pressed={picked ? picked.has(l.id) : undefined}
+                disabled={Boolean(picked) && l.status !== 'ready'}
+              >
+                {picked && <span className="check"><Icon name="check" size={16} /></span>}
                 <span className="lesson-title"><Highlight text={l.title} query={query} /></span>
                 <span className="lesson-meta">
                   {l.subject && (
@@ -190,7 +279,7 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
                 </span>
                 {l.status === 'processing' && l.error_message && <span className="muted" style={{ fontSize: '0.85rem' }}>{l.error_message}</span>}
               </button>
-              {(l.status === 'error' || l.status === 'recording') && (
+              {!picked && (l.status === 'error' || l.status === 'recording') && (
                 <div className="row-actions">
                   {l.status === 'error' && (
                     <button onClick={() => void retryLesson(l).then(refresh).catch(() => setError('Não foi possível tentar de novo.'))}>
@@ -205,10 +294,19 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects }: Props) {
         </ul>
       </div>
 
-      <button className="fab" onClick={onRecord}>
-        <Icon name="mic" size={20} />
-        Gravar aula
-      </button>
+      {picked ? (
+        <div className="select-bar">
+          <button className="ghost" onClick={() => { setPicked(null); setError(null); }} disabled={combining}>Cancelar</button>
+          <button className="primary" onClick={() => void combine()} disabled={chosen.length < 2 || combining} aria-busy={combining}>
+            {combining ? 'Juntando… até 1 min' : chosen.length < 2 ? 'Escolha 2 ou mais' : `Juntar ${chosen.length} aulas`}
+          </button>
+        </div>
+      ) : (
+        <button className="fab" onClick={onRecord}>
+          <Icon name="mic" size={20} />
+          Gravar aula
+        </button>
+      )}
     </section>
   );
 }

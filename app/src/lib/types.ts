@@ -14,6 +14,7 @@ export type Lesson = {
   audio_expires_at: string;
   audio_deleted: boolean;
   expected_chunks?: number | null;
+  notes?: string;
 };
 
 export type AudioChunk = {
@@ -25,6 +26,7 @@ export type AudioChunk = {
 };
 
 export type Segment = {
+  id?: number;
   start_s: number;
   end_s: number;
   text: string;

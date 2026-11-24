@@ -1,5 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
-import Markdown from 'react-markdown';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lesson } from '../lib/types';
 import { getLesson, requestProcessing } from '../lessons/api';
 import { listPending } from '../storage/localQueue';
@@ -13,10 +12,13 @@ import { formatClock, formatDay, formatDuration, statusLabel } from '../lessons/
 import { subjectTone } from '../lessons/subjectTone';
 import { Highlight, type OpenFocus } from './LessonsScreen';
 import Icon from '../components/Icon';
+import { EditableList, EditableMarkdown, NotesEditor } from '../components/Editable';
+import { saveNotes, saveOutput, saveSegment } from '../lessons/study';
+import { useAutosave } from '../lessons/useAutosave';
 import type { CSSProperties } from 'react';
 
-type Tab = 'summary' | 'rewrite' | 'transcript';
-const TABS: Array<[Tab, string]> = [['summary', 'Resumo'], ['rewrite', 'Reescrita'], ['transcript', 'Transcrição']];
+type Tab = 'summary' | 'rewrite' | 'transcript' | 'notes';
+const TABS: Array<[Tab, string]> = [['summary', 'Resumo'], ['rewrite', 'Reescrita'], ['transcript', 'Transcrição'], ['notes', 'Anotações']];
 
 type Props = { lessonId: string; onBack: () => void; focus?: OpenFocus };
 
@@ -87,6 +89,26 @@ export default function LessonScreen({ lessonId, onBack, focus }: Props) {
     };
   }, [lessonId, reload]);
 
+  // Abas com alteração ainda não salva: sair da tela pede confirmação.
+  const dirty = useRef(new Set<Tab>());
+  const markDirty = useMemo(() => {
+    const make = (t: Tab) => (d: boolean) => void (d ? dirty.current.add(t) : dirty.current.delete(t));
+    return { summary: make('summary'), rewrite: make('rewrite'), transcript: make('transcript') };
+  }, []);
+  const leave = () => {
+    if (dirty.current.size && !window.confirm('Você tem alterações não salvas. Sair mesmo assim?')) return;
+    onBack();
+  };
+  const storeOutput = (kind: 'summary' | 'rewrite') => async (md: string) => {
+    await saveOutput(lessonId, kind, md);
+    setContent((c) => c && { ...c, [kind]: md });
+  };
+  const storeSegments = async (changed: Array<{ key: number; text: string }>) => {
+    await Promise.all(changed.map((c) => saveSegment(c.key, c.text)));
+    const byId = new Map(changed.map((c) => [c.key, c.text]));
+    setContent((c) => c && { ...c, segments: c.segments.map((s) => (s.id != null && byId.has(s.id) ? { ...s, text: byId.get(s.id)! } : s)) });
+  };
+
   const playChunk = (idx: number, offset: number) => {
     const el = audio.current;
     const src = urls.get(idx);
@@ -120,7 +142,7 @@ export default function LessonScreen({ lessonId, onBack, focus }: Props) {
   };
 
   const back = (
-    <button className="back" onClick={onBack} aria-label="Voltar">
+    <button className="back" onClick={leave} aria-label="Voltar">
       <Icon name="back" size={20} />
       Aulas
     </button>
@@ -208,47 +230,85 @@ export default function LessonScreen({ lessonId, onBack, focus }: Props) {
       <nav className="segmented" role="tablist">
         <span className="thumb" style={{ transform: `translateX(${tabIndex * 100}%)` }} />
         {TABS.map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+          <button key={key} role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={tab === key} onClick={() => setTab(key)}>
             {label}
           </button>
         ))}
       </nav>
 
-      <div key={tab} className="fade-in">
-        {tab === 'summary' && (content.summary ? <div className="reading"><Markdown components={marked(query)}>{content.summary}</Markdown></div> : <p className="muted">{pendingText}</p>)}
-        {tab === 'rewrite' && (content.rewrite ? <div className="reading"><Markdown components={marked(query)}>{content.rewrite}</Markdown></div> : <p className="muted">{pendingText}</p>)}
-        {tab === 'transcript' &&
-          (content.segments.length ? (
-            <ol className="transcript">
-              {content.segments.map((s, i) => {
-                const focused = focus?.startS != null && Math.abs(s.start_s - focus.startS) < 0.01;
-                return (
-                  <li key={i}>
-                    <button
-                      className="segment"
-                      data-focus={focused}
-                      ref={focused ? (el) => {
-                        if (el && !scrolled.current) {
-                          scrolled.current = true;
-                          el.scrollIntoView({ block: 'center' });
-                        }
-                      } : undefined}
-                      onClick={() => playAt(s.start_s)}
-                      disabled={lesson.audio_deleted}
-                    >
-                      <span className="t">{formatClock(s.start_s)}</span>
-                      <span><Highlight text={s.text} query={query} /></span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : (
-            <p className="muted">{pendingText}</p>
-          ))}
-      </div>
+      {/* As abas ficam montadas: trocar de aba não perde o que está sendo editado. */}
+      <Panel tab="summary" active={tab}>
+        {content.summary ? (
+          <EditableMarkdown text={content.summary} components={marked(query)} onSave={storeOutput('summary')} onDirty={markDirty.summary} />
+        ) : (
+          <p className="muted">{pendingText}</p>
+        )}
+      </Panel>
+      <Panel tab="rewrite" active={tab}>
+        {content.rewrite ? (
+          <EditableMarkdown text={content.rewrite} components={marked(query)} onSave={storeOutput('rewrite')} onDirty={markDirty.rewrite} />
+        ) : (
+          <p className="muted">{pendingText}</p>
+        )}
+      </Panel>
+      <Panel tab="transcript" active={tab}>
+        {content.segments.length ? (
+          <EditableList
+            items={content.segments.filter((s) => s.id != null).map((s) => ({ key: s.id!, label: formatClock(s.start_s), text: s.text }))}
+            onSave={storeSegments}
+            onDirty={markDirty.transcript}
+            view={
+              <ol className="transcript">
+                {content.segments.map((s, i) => {
+                  const focused = focus?.startS != null && Math.abs(s.start_s - focus.startS) < 0.01;
+                  return (
+                    <li key={s.id ?? i}>
+                      <button
+                        className="segment"
+                        data-focus={focused}
+                        ref={focused ? (el) => {
+                          if (el && !scrolled.current) {
+                            scrolled.current = true;
+                            el.scrollIntoView({ block: 'center' });
+                          }
+                        } : undefined}
+                        onClick={() => playAt(s.start_s)}
+                        disabled={lesson.audio_deleted}
+                      >
+                        <span className="t">{formatClock(s.start_s)}</span>
+                        <span><Highlight text={s.text} query={query} /></span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            }
+          />
+        ) : (
+          <p className="muted">{pendingText}</p>
+        )}
+      </Panel>
+      <Panel tab="notes" active={tab}>
+        <Notes lessonId={lessonId} initial={lesson.notes ?? ''} />
+      </Panel>
     </section>
   );
+}
+
+function Panel({ tab, active, children }: { tab: Tab; active: Tab; children: React.ReactNode }) {
+  return (
+    <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} hidden={tab !== active} className="fade-in">
+      {children}
+    </div>
+  );
+}
+
+/** Anotações da aula: salvam sozinhas. Montadas uma vez por aula, para não perder nada ao trocar de aba. */
+function Notes({ lessonId, initial }: { lessonId: string; initial: string }) {
+  const [text, setText] = useState(initial);
+  const save = useCallback((v: string) => saveNotes(lessonId, v), [lessonId]);
+  const state = useAutosave(text, save);
+  return <NotesEditor value={text} onChange={setText} state={state} />;
 }
 
 /** Destaca o termo buscado também no resumo e na reescrita. */

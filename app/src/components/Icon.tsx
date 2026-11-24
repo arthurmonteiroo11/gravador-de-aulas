@@ -1,4 +1,4 @@
-type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop';
+type Name = 'play' | 'pause' | 'mic' | 'search' | 'back' | 'stop' | 'check' | 'stack';
 
 const PATHS: Record<Name, JSX.Element> = {
   play: <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor" />,
@@ -14,6 +14,13 @@ const PATHS: Record<Name, JSX.Element> = {
     <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4 4" />
+    </g>
+  ),
+  check: <path d="m5.5 12.5 4.2 4.2 8.8-9.4" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />,
+  stack: (
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <path d="m12 4 8.5 4.5L12 13 3.5 8.5Z" />
+      <path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5" strokeLinecap="round" />
     </g>
   ),
   back: <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />,

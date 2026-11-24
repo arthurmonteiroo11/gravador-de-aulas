@@ -11,7 +11,7 @@ export class GeminiError extends Error {}
 /** Cota esgotada ou sem nível grátis: esperar não resolve. */
 export class QuotaError extends GeminiError {}
 
-type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string };
+type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; maxOutputTokens?: number };
 
 const SEGMENTS_SCHEMA = {
   type: 'ARRAY',
@@ -40,7 +40,12 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.2 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+        temperature: 0.2,
+        ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+      },
     }),
   }).catch((e) => {
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new RateLimitError('Gemini demorou demais para responder');
@@ -77,4 +82,18 @@ export async function rewriteAndSummarize(transcript: string, opts: Opts = {}): 
     | null;
   if (!result?.rewrite || !result?.summary) throw new GeminiError('Resposta sem reescrita ou resumo');
   return { rewrite: result.rewrite, summary: result.summary };
+}
+
+const COMBINED_SCHEMA = {
+  type: 'OBJECT',
+  properties: { title: { type: 'STRING' }, content: { type: 'STRING' } },
+  required: ['title', 'content'],
+};
+
+/** Uma única chamada: junta o texto de várias aulas num material só. */
+export async function combineTexts(prompt: string, opts: Opts = {}): Promise<{ title: string; content: string }> {
+  // Saída limitada: segura o tempo de resposta e o gasto da cota.
+  const result = (await generate([{ text: prompt }], COMBINED_SCHEMA, { maxOutputTokens: 8192, ...opts })) as { title?: string; content?: string } | null;
+  if (!result?.content) throw new GeminiError('Resposta sem o texto combinado');
+  return { title: result.title?.trim() ?? '', content: result.content };
 }

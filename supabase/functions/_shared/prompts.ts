@@ -15,3 +15,16 @@ Gere dois textos em Markdown, em português:
 
 Transcrição:
 `;
+
+export const COMBINE_PROMPT = `Abaixo estão os textos de várias aulas em português, em ordem de data.
+
+Junte o conteúdo num único material de estudo em Markdown, em português:
+- Organize por tema, com títulos, e não aula por aula. Quando um assunto continua de uma aula para outra, una as partes.
+- Mantenha definições, exemplos, datas e fórmulas. Corte repetições.
+- Termine com uma seção "## Pontos principais" com no máximo 12 tópicos curtos.
+- Não invente conteúdo que não está nos textos.
+
+Responda com "title" (um título curto para o material, sem data) e "content" (o Markdown).
+
+Aulas:
+`;

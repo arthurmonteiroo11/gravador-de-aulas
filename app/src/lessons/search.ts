@@ -48,15 +48,16 @@ export function splitMatches(text: string, query: string): Array<{ text: string;
   return out;
 }
 
-export type TextHit = { lessonId: string; where: 'transcript' | 'summary' | 'rewrite'; snippet: string; startS: number | null };
+export type TextHit = { lessonId: string; where: 'transcript' | 'summary' | 'rewrite' | 'notes'; snippet: string; startS: number | null };
 
-/** Procura no texto de todas as aulas: transcrição, resumo e reescrita. */
+/** Procura no texto de todas as aulas: transcrição, resumo, reescrita e anotações. */
 export async function searchText(query: string): Promise<TextHit[]> {
   const q = query.trim();
   if (q.length < 2) return [];
-  const [segs, outs] = await Promise.all([
+  const [segs, outs, notes] = await Promise.all([
     supabase.from('transcript_segments').select('lesson_id, start_s, text').ilike('text', likePattern(q)).order('start_s').limit(60),
     supabase.from('lesson_outputs').select('lesson_id, kind, content_md').ilike('content_md', likePattern(q)).limit(20),
+    supabase.from('lessons').select('id, notes').ilike('notes', likePattern(q)).limit(20),
   ]);
   if (segs.error) throw segs.error;
   if (outs.error) throw outs.error;
@@ -66,6 +67,10 @@ export async function searchText(query: string): Promise<TextHit[]> {
   for (const o of outs.data ?? []) {
     const plain = (o.content_md as string).replace(/[#*_>`-]+/g, ' ').replace(/\s+/g, ' ');
     hits.push({ lessonId: o.lesson_id as string, where: o.kind as 'summary' | 'rewrite', snippet: snippetAround(plain, q), startS: null });
+  }
+  // Anotações são opcionais: um erro aqui não esconde o resto da busca.
+  for (const n of notes.error ? [] : notes.data ?? []) {
+    hits.push({ lessonId: n.id as string, where: 'notes', snippet: snippetAround((n.notes as string).replace(/\s+/g, ' '), q), startS: null });
   }
   return hits;
 }
