@@ -5,13 +5,37 @@ import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
 // Flash-Lite tem nível grátis com cota diária folgada e aceita áudio. Dá para trocar pelo segredo GEMINI_MODEL, sem reimplantar.
 export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-3.5-flash-lite';
 
-export class RateLimitError extends Error {}
+/** Recusa passageira (429 por minuto, 503 sobrecarregado) ou resposta lenta: vale tentar de novo depois. */
+export class RateLimitError extends Error {
+  constructor(message: string, readonly status = 0, readonly retryAfterS: number | null = null) {
+    super(message);
+  }
+}
+/** O Gemini não respondeu dentro do prazo. */
+export class GeminiTimeoutError extends RateLimitError {}
 export const GEMINI_TIMEOUT_MS = 90_000;
 export class GeminiError extends Error {}
 /** Cota esgotada ou sem nível grátis: esperar não resolve. */
 export class QuotaError extends GeminiError {}
 
-type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; maxOutputTokens?: number };
+type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; maxOutputTokens?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void> };
+
+/** A frase que o Google manda no corpo do erro, sem o resto do JSON. */
+function googleMessage(body: string): string {
+  try {
+    const m = JSON.parse(body)?.error?.message;
+    if (typeof m === 'string' && m) return m.slice(0, 160);
+  } catch { /* corpo não é JSON */ }
+  return body.slice(0, 160);
+}
+
+/** "retryDelay": "23s" no corpo, ou o cabeçalho Retry-After. */
+function retryAfter(res: Response, body: string): number | null {
+  const m = body.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
+  if (m) return Number(m[1]);
+  const h = Number(res.headers.get('retry-after'));
+  return Number.isFinite(h) && h > 0 ? h : null;
+}
 
 const SEGMENTS_SCHEMA = {
   type: 'ARRAY',
@@ -35,7 +59,7 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
   const model = opts.model ?? GEMINI_MODEL;
   // A função só pode rodar 150 s; uma resposta lenta não pode segurá-la até ser derrubada.
   const res = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? GEMINI_TIMEOUT_MS),
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
@@ -48,7 +72,7 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
       },
     }),
   }).catch((e) => {
-    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new RateLimitError('Gemini demorou demais para responder');
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new GeminiTimeoutError('Gemini demorou demais para responder');
     throw e;
   });
   if (res.status === 429 || res.status === 503) {
@@ -58,7 +82,7 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
         `Sem cota do Gemini para o modelo ${model}: troque o modelo ou espere a cota diária renovar e toque em Tentar de novo.`,
       );
     }
-    throw new RateLimitError(`Gemini ocupado (${res.status}): ${body.slice(0, 200)}`);
+    throw new RateLimitError(`Gemini ocupado (${res.status}): ${googleMessage(body)}`, res.status, retryAfter(res, body));
   }
   if (!res.ok) throw new GeminiError(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const json = await res.json();
@@ -90,8 +114,31 @@ const COMBINED_SCHEMA = {
   required: ['title', 'content'],
 };
 
-/** Uma única chamada: junta o texto de várias aulas num material só. */
+/** Prazo total do resumo combinado: a função é derrubada em 150 s. */
+export const COMBINE_BUDGET_MS = 125_000;
+
+/**
+ * Junta o texto de várias aulas num material só. Uma chamada; se o Gemini recusar na hora
+ * (limite por minuto, sobrecarga), espera e tenta de novo enquanto couber no prazo.
+ */
 export async function combineTexts(prompt: string, opts: Opts = {}): Promise<{ title: string; content: string }> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const start = Date.now();
+  for (let attempt = 1; ; attempt++) {
+    const left = COMBINE_BUDGET_MS - (Date.now() - start);
+    try {
+      return await combineOnce(prompt, { ...opts, timeoutMs: Math.min(opts.timeoutMs ?? 110_000, left) });
+    } catch (e) {
+      if (!(e instanceof RateLimitError) || e instanceof GeminiTimeoutError || attempt >= 3) throw e;
+      const waitMs = Math.min((e.retryAfterS ?? 4 * attempt) * 1000, 30_000);
+      // Só espera se ainda sobrar tempo de verdade para a resposta.
+      if (COMBINE_BUDGET_MS - (Date.now() - start) - waitMs < 45_000) throw e;
+      await sleep(waitMs);
+    }
+  }
+}
+
+async function combineOnce(prompt: string, opts: Opts): Promise<{ title: string; content: string }> {
   // Saída limitada: segura o tempo de resposta e o gasto da cota.
   const result = (await generate([{ text: prompt }], COMBINED_SCHEMA, { maxOutputTokens: 8192, ...opts })) as { title?: string; content?: string } | null;
   if (!result?.content) throw new GeminiError('Resposta sem o texto combinado');

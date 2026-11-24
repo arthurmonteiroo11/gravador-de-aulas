@@ -60,3 +60,44 @@ Deno.test('429 de cota esgotada vira QuotaError, não espera para sempre', async
 Deno.test('modelo padrão tem nível grátis', () => {
   assertEquals(GEMINI_MODEL, 'gemini-3.5-flash-lite');
 });
+
+Deno.test('combineTexts tenta de novo depois de um 503 e usa o retryDelay', async () => {
+  const { combineTexts } = await import('./gemini.ts');
+  let calls = 0;
+  const waits: number[] = [];
+  const fetcher = () => {
+    calls++;
+    return Promise.resolve(
+      calls === 1
+        ? new Response(JSON.stringify({ error: { message: 'The model is overloaded.', details: [{ retryDelay: '7s' }] } }), { status: 503 })
+        : reply({ title: 'T', content: '# x' }),
+    );
+  };
+  const r = await combineTexts('p', { apiKey: 'k', fetcher, sleep: async (ms) => void waits.push(ms) });
+  assertEquals(r, { title: 'T', content: '# x' });
+  assertEquals(calls, 2);
+  assertEquals(waits, [7000]);
+});
+
+Deno.test('combineTexts desiste depois de 3 recusas e mostra o motivo do Google', async () => {
+  const { combineTexts } = await import('./gemini.ts');
+  let calls = 0;
+  const fetcher = () => {
+    calls++;
+    return Promise.resolve(new Response(JSON.stringify({ error: { message: 'Resource exhausted. Please try again later.' } }), { status: 429 }));
+  };
+  const e = await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, sleep: async () => {} }), RateLimitError);
+  assertEquals(calls, 3);
+  assertEquals(e.message, 'Gemini ocupado (429): Resource exhausted. Please try again later.');
+});
+
+Deno.test('combineTexts não repete depois de demorar demais', async () => {
+  const { combineTexts, GeminiTimeoutError } = await import('./gemini.ts');
+  let calls = 0;
+  const fetcher = () => {
+    calls++;
+    return Promise.reject(new DOMException('t', 'TimeoutError'));
+  };
+  await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, sleep: async () => {} }), GeminiTimeoutError);
+  assertEquals(calls, 1);
+});

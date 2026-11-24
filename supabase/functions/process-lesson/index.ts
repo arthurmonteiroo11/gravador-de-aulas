@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { processUntilDone, type StepDeps } from '../_shared/processStep.ts';
-import { combineTexts, GEMINI_MODEL, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
+import { combineTexts, GEMINI_MODEL, GeminiTimeoutError, QuotaError, RateLimitError, rewriteAndSummarize, transcribeBlock } from '../_shared/gemini.ts';
 import { combinePrompt, fallbackTitle, MAX_LESSONS, type CombineSource } from '../_shared/combine.ts';
 import type { LessonRow } from '../_shared/types.ts';
 
@@ -130,7 +130,9 @@ async function transcriptOf(db: Db, lessonId: string): Promise<string> {
 /** Frase curta para a tela: o detalhe técnico fica no log da função. */
 function combineErrorText(e: unknown): string {
   if (e instanceof QuotaError) return e.message;
-  if (e instanceof RateLimitError) return 'O Gemini está ocupado agora. Tente de novo em alguns minutos.';
+  if (e instanceof GeminiTimeoutError) return 'O Gemini demorou demais para responder. Tente juntar menos aulas de uma vez, ou tente de novo.';
+  // Mostra o motivo que o Google deu: ajuda a saber se é limite por minuto ou sobrecarga.
+  if (e instanceof RateLimitError) return `O Gemini recusou agora (${e.message.replace(/^Gemini ocupado /, '')}). Tente de novo em 1 minuto.`;
   return `Não deu para juntar as aulas: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
 }
 
