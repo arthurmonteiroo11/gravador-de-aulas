@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { cancelInvite, createInvite, INVITE_DAYS, formatCode, inviteLink, inviteOpen, listInvites, shareInvite, type Invite } from '../lib/invites';
+import { canInvite, cancelInvite, createInvite, INVITE_DAYS, formatCode, inviteLink, inviteOpen, listInvites, shareInvite, type Invite } from '../lib/invites';
 import { audioEstimateMb, exportBackup, importBackup, listBackupLessons, type ImportResult } from '../backup/backup';
 import { shareFile } from '../media/exportAudio';
 import Icon from '../components/Icon';
@@ -12,12 +12,16 @@ const daysLeft = (iso: string) => Math.max(1, Math.ceil((Date.parse(iso) - Date.
 
 /** Conta: convidar outra pessoa, fazer e restaurar backup, sair. */
 export default function AccountScreen({ email, onBack }: Props) {
+  const [inviter, setInviter] = useState(false);
+  useEffect(() => {
+    canInvite().then(setInviter);
+  }, []);
   return (
     <section className="enter account">
       <button className="back" onClick={onBack}><Icon name="back" size={18} />Aulas</button>
       <h1 className="title">Conta</h1>
       <p className="subtitle">{email}</p>
-      <InviteCard />
+      {inviter && <InviteCard />}
       <BackupCard />
       <div className="actions account-out">
         <button className="ghost" onClick={() => void supabase.auth.signOut()}>Sair da conta</button>

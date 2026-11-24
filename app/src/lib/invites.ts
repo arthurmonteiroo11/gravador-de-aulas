@@ -44,6 +44,12 @@ export async function listInvites(): Promise<Invite[]> {
   return (data ?? []) as Invite[];
 }
 
+/** Só as contas criadas no painel convidam; quem entrou por convite não vê a opção. */
+export async function canInvite(): Promise<boolean> {
+  const { data, error } = await supabase.from('members').select('can_invite').maybeSingle();
+  return !error && Boolean((data as { can_invite?: boolean } | null)?.can_invite);
+}
+
 export async function cancelInvite(code: string): Promise<void> {
   const { error } = await supabase.from('invites').delete().eq('code', code);
   if (error) throw new Error('Não deu para cancelar o convite.');

@@ -322,7 +322,15 @@ async function signup(body: unknown): Promise<Response> {
         .eq('code', code).is('used_at', null).gt('expires_at', new Date().toISOString())
         .select('created_by').maybeSingle();
       if (error) throw error;
-      return (data?.created_by as string | undefined) ?? null;
+      const by = (data?.created_by as string | undefined) ?? null;
+      if (!by) return null;
+      // Convite feito por quem não pode convidar (entrou por convite) não vale.
+      const { data: m } = await db.from('members').select('can_invite').eq('user_id', by).maybeSingle();
+      if (!m?.can_invite) {
+        await db.from('invites').update({ used_at: null }).eq('code', code).is('used_by', null);
+        return null;
+      }
+      return by;
     },
     release: async (code) => void (await db.from('invites').update({ used_at: null }).eq('code', code).is('used_by', null)),
     createUser: async (email, password) => {
