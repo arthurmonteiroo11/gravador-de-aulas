@@ -44,7 +44,9 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new RateLimitError('Gemini demorou demais para responder');
     throw e;
   });
-  if (res.status === 429 || res.status === 503) throw new RateLimitError(`Gemini ocupado (${res.status})`);
+  if (res.status === 429 || res.status === 503) {
+    throw new RateLimitError(`Gemini ocupado (${res.status}): ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  }
   if (!res.ok) throw new GeminiError(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const json = await res.json();
   const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;

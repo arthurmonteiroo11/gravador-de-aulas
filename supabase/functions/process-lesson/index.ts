@@ -68,6 +68,6 @@ Deno.serve(async (req) => {
     return json(await processUntilDone(lessonId, depsFor(lessonId)));
   } catch (e) {
     console.error(e);
-    return json({ error: 'falha ao processar' }, 500);
+    return json({ error: `falha ao processar: ${String((e as Error)?.message ?? e).slice(0, 300)}` }, 500);
   }
 });

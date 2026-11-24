@@ -170,7 +170,9 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
         />
       )}
 
-      {lesson.status === 'ready' && lesson.error_message && <p className="notice">{lesson.error_message}</p>}
+      {(lesson.status === 'ready' || lesson.status === 'processing') && lesson.error_message && (
+        <p className="notice">{lesson.error_message}</p>
+      )}
 
       <nav className="tabs" role="tablist">
         {TABS.map(([key, label]) => (

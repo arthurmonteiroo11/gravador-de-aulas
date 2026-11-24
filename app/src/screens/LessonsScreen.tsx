@@ -71,6 +71,7 @@ export default function LessonsScreen({ onRecord, onOpen }: Props) {
                   .filter(Boolean)
                   .join(' · ')}
               </span>
+              {l.status === 'processing' && l.error_message && <span className="muted">{l.error_message}</span>}
             </button>
             {l.status === 'error' && (
               <button onClick={() => void retryLesson(l).then(refresh).catch(() => setError('Não foi possível tentar de novo.'))}>
