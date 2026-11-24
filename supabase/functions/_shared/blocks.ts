@@ -1,0 +1,36 @@
+import type { AudioChunk, ModelSegment, Segment } from './types.ts';
+
+export const BLOCK_SIZE = 10;
+
+/** Agrupa as partes de 1 min em blocos de 10, em ordem. */
+export function groupIntoBlocks(chunks: AudioChunk[], size = BLOCK_SIZE): AudioChunk[][] {
+  const sorted = [...chunks].sort((a, b) => a.idx - b.idx);
+  const blocks: AudioChunk[][] = [];
+  for (let i = 0; i < sorted.length; i += size) blocks.push(sorted.slice(i, i + size));
+  return blocks;
+}
+
+/** Converte tempos relativos a cada parte em tempos da aula inteira. */
+export function toAbsoluteSegments(block: AudioChunk[], segs: ModelSegment[]): Segment[] {
+  const out: Segment[] = [];
+  for (const s of segs) {
+    const chunk = block[s.part];
+    const text = s.text?.trim();
+    if (!chunk || !text) continue;
+    const clamp = (t: number) => Math.min(Math.max(0, t), chunk.duration_s);
+    out.push({ start_s: chunk.start_s + clamp(s.start), end_s: chunk.start_s + clamp(s.end), text, speaker: null });
+  }
+  return out.sort((a, b) => a.start_s - b.start_s);
+}
+
+/** Texto corrido com marcação de tempo, usado para a reescrita. */
+export function transcriptText(segments: Segment[]): string {
+  const mmss = (t: number) => {
+    const s = Math.floor(t);
+    const h = Math.floor(s / 3600);
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const sec = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${m}:${sec}` : `${m}:${sec}`;
+  };
+  return segments.map((s) => `[${mmss(s.start_s)}] ${s.text}`).join('\n');
+}

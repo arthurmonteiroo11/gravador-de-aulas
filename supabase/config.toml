@@ -1,0 +1,6 @@
+# Configuração mínima usada pela CLI e pela integração com o GitHub.
+[functions.process-lesson]
+verify_jwt = false  # a função confere o dono da aula ou o segredo do agendador
+
+[functions.purge-audio]
+verify_jwt = false  # só aceita chamadas com o segredo do agendador

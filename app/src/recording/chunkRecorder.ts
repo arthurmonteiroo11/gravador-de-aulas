@@ -11,8 +11,14 @@ const PREFERRED_MIME = 'audio/mp4';
 const pickMimeType = (): string | undefined =>
   typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(PREFERRED_MIME) ? PREFERRED_MIME : undefined;
 
+/** 48 kbps: voz clara e ~32 MB por aula de 1h30, cabendo no armazenamento grátis. */
+export const AUDIO_BITS_PER_SECOND = 48_000;
+
+export const recorderOptions = (mimeType: string | undefined): MediaRecorderOptions =>
+  mimeType ? { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SECOND } : { audioBitsPerSecond: AUDIO_BITS_PER_SECOND };
+
 const defaultCreateRecorder = (stream: MediaStream, mimeType: string | undefined) =>
-  new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  new MediaRecorder(stream, recorderOptions(mimeType));
 
 /**
  * Grava em partes independentes: cada parte é um MediaRecorder novo, para que

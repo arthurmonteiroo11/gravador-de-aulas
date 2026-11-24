@@ -85,3 +85,13 @@ describe('ChunkRecorder', () => {
     expect(rec.state).toBe('stopped');
   });
 });
+
+import { recorderOptions, AUDIO_BITS_PER_SECOND } from './chunkRecorder';
+
+describe('recorderOptions', () => {
+  it('usa 48 kbps para caber 1h30 no armazenamento grátis', () => {
+    expect(AUDIO_BITS_PER_SECOND).toBe(48_000);
+    expect(recorderOptions('audio/mp4')).toEqual({ mimeType: 'audio/mp4', audioBitsPerSecond: 48_000 });
+    expect(recorderOptions(undefined)).toEqual({ audioBitsPerSecond: 48_000 });
+  });
+});
