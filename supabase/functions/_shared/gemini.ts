@@ -5,9 +5,19 @@ import { REWRITE_PROMPT, TRANSCRIBE_PROMPT } from './prompts.ts';
 // Flash-Lite tem nível grátis com cota diária folgada e aceita áudio. Dá para trocar pelo segredo GEMINI_MODEL, sem reimplantar.
 export const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL')?.trim() || 'gemini-3.5-flash-lite';
 
+/**
+ * Modelos reserva, com nível grátis e cota própria: usados quando o principal está sobrecarregado (503),
+ * no limite por minuto (429) ou sem cota no dia. Dá para trocar pelo segredo GEMINI_FALLBACK_MODELS,
+ * separados por vírgula. Um nome que não existir mais é pulado.
+ */
+export const GEMINI_FALLBACK_MODELS = (Deno.env.get('GEMINI_FALLBACK_MODELS') ?? 'gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-2.5-flash')
+  .split(',')
+  .map((m) => m.trim())
+  .filter((m) => m && m !== GEMINI_MODEL);
+
 /** Recusa passageira (429 por minuto, 503 sobrecarregado) ou resposta lenta: vale tentar de novo depois. */
 export class RateLimitError extends Error {
-  constructor(message: string, readonly status = 0, readonly retryAfterS: number | null = null) {
+  constructor(message: string, readonly status = 0, readonly retryAfterS: number | null = null, readonly reason = '') {
     super(message);
   }
 }
@@ -17,8 +27,10 @@ export const GEMINI_TIMEOUT_MS = 90_000;
 export class GeminiError extends Error {}
 /** Cota esgotada ou sem nível grátis: esperar não resolve. */
 export class QuotaError extends GeminiError {}
+/** O modelo não existe (mais) para esta chave. */
+class ModelNotFoundError extends GeminiError {}
 
-type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; maxOutputTokens?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void> };
+type Opts = { apiKey?: string; fetcher?: typeof fetch; model?: string; fallbacks?: string[]; maxOutputTokens?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void> };
 
 /** A frase que o Google manda no corpo do erro, sem o resto do JSON. */
 function googleMessage(body: string): string {
@@ -52,11 +64,30 @@ const OUTPUTS_SCHEMA = {
   required: ['rewrite', 'summary'],
 };
 
+/**
+ * Pede ao modelo principal; se ele recusar por sobrecarga ou cota, passa para os reserva, em ordem.
+ * Demora (timeout) não troca de modelo: outra chamada lenta estouraria o tempo da função.
+ */
 async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<unknown> {
+  const models = [opts.model ?? GEMINI_MODEL, ...(opts.fallbacks ?? GEMINI_FALLBACK_MODELS)];
+  let firstError: unknown = null;
+  for (const [i, model] of models.entries()) {
+    try {
+      return await generateWith(model, parts, schema, opts);
+    } catch (e) {
+      const switchable = (e instanceof RateLimitError && !(e instanceof GeminiTimeoutError)) || e instanceof QuotaError || (i > 0 && e instanceof ModelNotFoundError);
+      if (!switchable) throw e;
+      if (!(e instanceof ModelNotFoundError)) firstError ??= e;
+      console.warn(`Gemini ${model} recusou (${(e as Error).message.slice(0, 120)}); tentando o próximo modelo`);
+    }
+  }
+  throw firstError ?? new GeminiError('Nenhum modelo do Gemini disponível');
+}
+
+async function generateWith(model: string, parts: unknown[], schema: unknown, opts: Opts): Promise<unknown> {
   const apiKey = (opts.apiKey ?? Deno.env.get('GEMINI_API_KEY'))?.trim();
   if (!apiKey) throw new GeminiError('GEMINI_API_KEY não configurada');
   const fetcher = opts.fetcher ?? fetch;
-  const model = opts.model ?? GEMINI_MODEL;
   // A função só pode rodar 150 s; uma resposta lenta não pode segurá-la até ser derrubada.
   const res = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     signal: AbortSignal.timeout(opts.timeoutMs ?? GEMINI_TIMEOUT_MS),
@@ -82,8 +113,9 @@ async function generate(parts: unknown[], schema: unknown, opts: Opts): Promise<
         `Sem cota do Gemini para o modelo ${model}: troque o modelo ou espere a cota diária renovar e toque em Tentar de novo.`,
       );
     }
-    throw new RateLimitError(`Gemini ocupado (${res.status}): ${googleMessage(body)}`, res.status, retryAfter(res, body));
+    throw new RateLimitError(`Gemini ocupado (${res.status}): ${googleMessage(body)}`, res.status, retryAfter(res, body), googleMessage(body));
   }
+  if (res.status === 404) throw new ModelNotFoundError(`Modelo ${model} não encontrado`);
   if (!res.ok) throw new GeminiError(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const json = await res.json();
   const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;

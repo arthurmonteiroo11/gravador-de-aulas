@@ -132,7 +132,10 @@ function combineErrorText(e: unknown): string {
   if (e instanceof QuotaError) return e.message;
   if (e instanceof GeminiTimeoutError) return 'O Gemini demorou demais para responder. Tente juntar menos aulas de uma vez, ou tente de novo.';
   // Mostra o motivo que o Google deu: ajuda a saber se é limite por minuto ou sobrecarga.
-  if (e instanceof RateLimitError) return `O Gemini recusou agora (${e.message.replace(/^Gemini ocupado /, '')}). Tente de novo em 1 minuto.`;
+  if (e instanceof RateLimitError) {
+    const what = e.status === 503 ? 'está sobrecarregado' : 'recusou o pedido';
+    return `O Gemini ${what} agora, também nos modelos reserva (erro ${e.status || '?'}${e.reason ? `: ${e.reason}` : ''}). Tente de novo em alguns minutos.`;
+  }
   return `Não deu para juntar as aulas: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
 }
 

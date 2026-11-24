@@ -73,7 +73,7 @@ Deno.test('combineTexts tenta de novo depois de um 503 e usa o retryDelay', asyn
         : reply({ title: 'T', content: '# x' }),
     );
   };
-  const r = await combineTexts('p', { apiKey: 'k', fetcher, sleep: async (ms) => void waits.push(ms) });
+  const r = await combineTexts('p', { apiKey: 'k', fetcher, fallbacks: [], sleep: async (ms) => void waits.push(ms) });
   assertEquals(r, { title: 'T', content: '# x' });
   assertEquals(calls, 2);
   assertEquals(waits, [7000]);
@@ -86,7 +86,7 @@ Deno.test('combineTexts desiste depois de 3 recusas e mostra o motivo do Google'
     calls++;
     return Promise.resolve(new Response(JSON.stringify({ error: { message: 'Resource exhausted. Please try again later.' } }), { status: 429 }));
   };
-  const e = await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, sleep: async () => {} }), RateLimitError);
+  const e = await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, fallbacks: [], sleep: async () => {} }), RateLimitError);
   assertEquals(calls, 3);
   assertEquals(e.message, 'Gemini ocupado (429): Resource exhausted. Please try again later.');
 });
@@ -98,6 +98,51 @@ Deno.test('combineTexts não repete depois de demorar demais', async () => {
     calls++;
     return Promise.reject(new DOMException('t', 'TimeoutError'));
   };
-  await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, sleep: async () => {} }), GeminiTimeoutError);
+  await assertRejects(() => combineTexts('p', { apiKey: 'k', fetcher, fallbacks: [], sleep: async () => {} }), GeminiTimeoutError);
   assertEquals(calls, 1);
+});
+
+Deno.test('503 no modelo principal passa para o reserva', async () => {
+  const urls: string[] = [];
+  const fetcher = (url: string | URL | Request) => {
+    urls.push(String(url));
+    return Promise.resolve(
+      urls.length === 1
+        ? new Response(JSON.stringify({ error: { message: 'This model is currently experiencing high demand.' } }), { status: 503 })
+        : reply({ rewrite: '# A', summary: '- b' }),
+    );
+  };
+  const r = await rewriteAndSummarize('t', { apiKey: 'k', fetcher, model: 'principal', fallbacks: ['reserva-1', 'reserva-2'] });
+  assertEquals(r, { rewrite: '# A', summary: '- b' });
+  assertEquals(urls.map((u) => u.split('/models/')[1].split(':')[0]), ['principal', 'reserva-1']);
+});
+
+Deno.test('reserva que não existe é pulado e cota esgotada também troca de modelo', async () => {
+  const urls: string[] = [];
+  const fetcher = (url: string | URL | Request) => {
+    urls.push(String(url));
+    if (urls.length === 1) return Promise.resolve(new Response('You exceeded your current quota', { status: 429 }));
+    if (urls.length === 2) return Promise.resolve(new Response('{"error":{"message":"not found"}}', { status: 404 }));
+    return Promise.resolve(reply([{ part: 0, start: 0, end: 1, text: 'oi' }]));
+  };
+  const segs = await transcribeBlock([], { apiKey: 'k', fetcher, model: 'a', fallbacks: ['b', 'c'] });
+  assertEquals(segs.length, 1);
+  assertEquals(urls.length, 3);
+});
+
+Deno.test('demora no principal não troca de modelo', async () => {
+  let calls = 0;
+  const fetcher = () => {
+    calls++;
+    return Promise.reject(new DOMException('t', 'TimeoutError'));
+  };
+  await assertRejects(() => transcribeBlock([], { apiKey: 'k', fetcher, model: 'a', fallbacks: ['b'] }), RateLimitError);
+  assertEquals(calls, 1);
+});
+
+Deno.test('todos sobrecarregados: devolve o erro do principal', async () => {
+  const fetcher = () => Promise.resolve(new Response('{"error":{"message":"high demand"}}', { status: 503 }));
+  const e = await assertRejects(() => transcribeBlock([], { apiKey: 'k', fetcher, model: 'a', fallbacks: ['b'] }), RateLimitError);
+  assertEquals((e as RateLimitError).status, 503);
+  assertEquals((e as RateLimitError).reason, 'high demand');
 });
