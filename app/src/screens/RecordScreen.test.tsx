@@ -121,4 +121,39 @@ describe('RecordScreen — avisos', () => {
     await act(async () => { emit({ idx: 0, blob: new Blob(['a']), startS: 0, durationS: 60 }); });
     expect(screen.getByText(/Não consegui salvar parte da gravação/)).toBeInTheDocument();
   });
+
+  it('dois toques em Continuar abrem o microfone uma vez só', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { deps, rec } = makeDeps();
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    rec.state = 'paused';
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    let release: (s: MediaStream) => void = () => undefined;
+    (deps.getVoiceStream as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((r) => (release = r)));
+    const button = screen.getByRole('button', { name: 'Continuar' });
+    await act(async () => { fireEvent.click(button); fireEvent.click(button); });
+    await act(async () => { release({} as MediaStream); });
+    expect(deps.getVoiceStream).toHaveBeenCalledTimes(2); // 1 no início + 1 ao continuar
+    expect(rec.resume).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('encerrar espera a última parte ficar salva no aparelho', async () => {
+    const { deps, rec } = makeDeps();
+    let emit: (c: { idx: number; blob: Blob; startS: number; durationS: number }) => void = () => undefined;
+    (deps.createRecorder as ReturnType<typeof vi.fn>).mockImplementation((_s: MediaStream, onChunk: typeof emit) => {
+      emit = onChunk;
+      return rec;
+    });
+    let saved: () => void = () => undefined;
+    deps.saveChunk = vi.fn(() => new Promise<void>((r) => (saved = r)));
+    rec.stop = vi.fn(async () => { rec.state = 'stopped'; emit({ idx: 0, blob: new Blob(['a']), startS: 0, durationS: 3 }); });
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Encerrar' })); });
+    expect(deps.finishRecording).not.toHaveBeenCalled();
+    await act(async () => { saved(); });
+    expect(deps.finishRecording).toHaveBeenCalled();
+  });
 });

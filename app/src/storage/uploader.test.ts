@@ -36,6 +36,13 @@ describe('uploadPending', () => {
     expect(lastProblems().upload).toBe('rede');
   });
 
+  it('envio que trava não prende a fila: vira erro e libera a próxima rodada', async () => {
+    const upload = vi.fn(() => new Promise(() => undefined));
+    const client = { storage: { from: () => ({ upload }) }, from: () => ({ upsert: vi.fn() }) };
+    expect(await uploadPending('u1', client as never, { timeoutMs: 20 })).toEqual({ uploaded: 0, failed: 1 });
+    expect(lastProblems().upload).toMatch(/demorou demais/);
+  });
+
   it('nunca remove antes de gravar a linha', async () => {
     const { client } = fakeClient({ upsertError: true });
     await uploadPending('u1', client as never);

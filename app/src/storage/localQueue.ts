@@ -13,7 +13,26 @@ const db = () =>
     upgrade(d) {
       d.createObjectStore(STORE, { keyPath: ['lessonId', 'idx'] });
     },
+    // O iOS derruba a conexão quando o app vai para o fundo; a próxima chamada abre outra.
+    terminated() {
+      dbPromise = null;
+    },
   }));
+
+/** Roda no banco; se a conexão caiu, abre de novo e tenta uma vez mais. */
+async function withDb<T>(fn: (d: IDBPDatabase) => Promise<T>): Promise<T> {
+  try {
+    return await fn(await db());
+  } catch {
+    dbPromise = null;
+    return fn(await db());
+  }
+}
+
+/** Simula o iOS fechando a conexão sem avisar. Só para testes. */
+export async function dropConnectionForTest(): Promise<void> {
+  (await db()).close();
+}
 
 const readBlob = (blob: Blob): Promise<ArrayBuffer> =>
   typeof blob.arrayBuffer === 'function'
@@ -29,11 +48,11 @@ const readBlob = (blob: Blob): Promise<ArrayBuffer> =>
 export async function putChunk(chunk: PendingChunk): Promise<void> {
   const { blob, ...rest } = chunk;
   const stored: StoredChunk = { ...rest, data: await readBlob(blob), type: blob.type };
-  await (await db()).put(STORE, stored);
+  await withDb((d) => d.put(STORE, stored));
 }
 
 export async function listPending(lessonId?: string): Promise<PendingChunk[]> {
-  const all = (await (await db()).getAll(STORE)) as StoredChunk[];
+  const all = (await withDb((d) => d.getAll(STORE))) as StoredChunk[];
   return all
     .filter((c) => !lessonId || c.lessonId === lessonId)
     .sort((a, b) => a.lessonId.localeCompare(b.lessonId) || a.idx - b.idx)
@@ -41,7 +60,7 @@ export async function listPending(lessonId?: string): Promise<PendingChunk[]> {
 }
 
 export async function removeChunk(lessonId: string, idx: number): Promise<void> {
-  await (await db()).delete(STORE, [lessonId, idx]);
+  await withDb((d) => d.delete(STORE, [lessonId, idx]));
 }
 
 export async function closeQueue(): Promise<void> {

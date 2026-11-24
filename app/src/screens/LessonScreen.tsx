@@ -5,6 +5,8 @@ import { getLesson, requestProcessing } from '../lessons/api';
 import { listPending } from '../storage/localQueue';
 import { errorText, lastProblems, recordProblem } from '../lib/diagnostics';
 import PipelineStatus from '../components/PipelineStatus';
+import { uploadPending } from '../storage/uploader';
+import { supabase } from '../lib/supabase';
 import { loadLessonContent, signedUrls, type LessonContent } from '../lessons/content';
 import { locate } from '../lessons/playback';
 import { formatClock, formatDuration, statusLabel } from '../lessons/format';
@@ -19,6 +21,21 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
   const [urls, setUrls] = useState<Map<number, string>>(new Map());
   const [onDevice, setOnDevice] = useState(0);
   const [problems, setProblems] = useState(lastProblems());
+  const [sending, setSending] = useState(false);
+  const [reload, setReload] = useState(0);
+
+  const sendNow = async () => {
+    setSending(true);
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) await uploadPending(data.user.id);
+    } catch (err) {
+      recordProblem('upload', await errorText(err));
+    } finally {
+      setSending(false);
+      setReload((n) => n + 1);
+    }
+  };
   const audio = useRef<HTMLAudioElement>(null);
   const playingIdx = useRef<number | null>(null);
   const done = useRef(false);
@@ -37,7 +54,10 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
         }
       }
       const c = await loadLessonContent(lessonId);
-      const pending = await listPending(lessonId).catch(() => []);
+      const pending = await listPending(lessonId).catch(async (err) => {
+        recordProblem('upload', `Não consegui ler as partes salvas no aparelho: ${await errorText(err)}`);
+        return [];
+      });
       if (!alive) return;
       setOnDevice(pending.length);
       setProblems(lastProblems());
@@ -55,7 +75,7 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
       alive = false;
       clearInterval(timer);
     };
-  }, [lessonId]);
+  }, [lessonId, reload]);
 
   const playChunk = (idx: number, offset: number) => {
     const el = audio.current;
@@ -109,6 +129,8 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
           expected={lesson.expected_chunks}
           uploadError={problems.upload}
           processingError={problems.processing}
+          onSendNow={() => void sendNow()}
+          sending={sending}
         />
       )}
 

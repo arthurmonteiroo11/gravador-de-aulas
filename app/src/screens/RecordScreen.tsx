@@ -70,6 +70,8 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
   const lessonId = useRef<string | null>(null);
   const askedLimit = useRef(false);
   const cleanups = useRef<Array<() => unknown>>([]);
+  const saves = useRef<Array<Promise<void>>>([]);
+  const resuming = useRef(false);
 
   useEffect(() => () => cleanups.current.forEach((fn) => void fn()), []);
 
@@ -129,8 +131,10 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
     }
     try {
       const r = deps.createRecorder(stream.current, (c) => {
-        deps.saveChunk({ lessonId: id, ...c }).catch(() =>
-          setError('Não consegui salvar parte da gravação no aparelho. Libere espaço no iPhone e continue.'),
+        saves.current.push(
+          deps.saveChunk({ lessonId: id, ...c }).catch(() =>
+            setError('Não consegui salvar parte da gravação no aparelho. Libere espaço no iPhone e continue.'),
+          ),
         );
       });
       rec.current = r;
@@ -151,7 +155,10 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
     setPhase('paused');
   };
 
+  // Um toque duplo abriria dois microfones; no iPhone o segundo derruba o primeiro e a gravação pausa sozinha.
   const resume = async () => {
+    if (resuming.current) return;
+    resuming.current = true;
     setError(null);
     try {
       releaseStream();
@@ -160,6 +167,8 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
       setPhase('recording');
     } catch (e) {
       setError(micErrorMessage(e));
+    } finally {
+      resuming.current = false;
     }
   };
 
@@ -172,6 +181,8 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
     releaseStream();
     cleanups.current.forEach((fn) => void fn());
     cleanups.current = [];
+    // A última parte precisa estar no aparelho antes de dizer ao servidor quantas partes esperar.
+    await Promise.all(saves.current);
     try {
       await deps.finishRecording(id, r.recordedS, r.chunkCount);
     } catch {
