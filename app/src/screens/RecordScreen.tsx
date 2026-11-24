@@ -6,6 +6,7 @@ import { watchLifecycle } from '../recording/lifecycle';
 import { putChunk } from '../storage/localQueue';
 import { createLesson, finishRecording } from '../lessons/api';
 import { formatClock } from '../lessons/format';
+import { serverErrorDetail } from '../lessons/errors';
 
 export const LIMIT_S = 5400; // 1h30
 
@@ -95,10 +96,23 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
       setPhase('form');
       return;
     }
+    let id: string;
     try {
       const lesson = await deps.createLesson({ title: title.trim(), subject: subject.trim() || undefined });
       lessonId.current = lesson.id;
-      const id = lesson.id;
+      id = lesson.id;
+    } catch (err) {
+      releaseStream();
+      const detail = serverErrorDetail(err);
+      setError(
+        detail
+          ? `Não foi possível criar a aula. Erro do servidor: ${detail}`
+          : 'Não foi possível criar a aula. Verifique a internet e tente de novo.',
+      );
+      setPhase('form');
+      return;
+    }
+    try {
       const r = deps.createRecorder(stream.current, (c) => {
         deps.saveChunk({ lessonId: id, ...c }).catch(() =>
           setError('Não consegui salvar parte da gravação no aparelho. Libere espaço no iPhone e continue.'),
@@ -108,9 +122,10 @@ export default function RecordScreen({ deps = realDeps, onDone, onCancel }: Prop
       r.start();
       cleanups.current.push(await deps.keepScreenOn(() => setScreenWarning(true)), watchLifecycle(r));
       setPhase('recording');
-    } catch {
+    } catch (err) {
       releaseStream();
-      setError('Não foi possível criar a aula. Verifique a internet e tente de novo.');
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(`Não foi possível iniciar a gravação: ${reason}`);
       setPhase('form');
     }
   };

@@ -45,6 +45,24 @@ describe('RecordScreen', () => {
     expect(deps.createLesson).not.toHaveBeenCalled();
   });
 
+  it('mostra o erro real do servidor ao criar a aula', async () => {
+    const { deps } = makeDeps({
+      createLesson: vi.fn().mockRejectedValue({ message: 'permission denied for table lessons', code: '42501' }),
+    });
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    expect(screen.getByText(/permission denied for table lessons \(42501\)/)).toBeInTheDocument();
+  });
+
+  it('mostra o erro real quando o gravador não inicia', async () => {
+    const { deps } = makeDeps({
+      createRecorder: vi.fn(() => { throw Object.assign(new Error('mimeType not supported'), { name: 'NotSupportedError' }); }),
+    });
+    render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await startRecording();
+    expect(screen.getByText(/Não foi possível iniciar a gravação: mimeType not supported/)).toBeInTheDocument();
+  });
+
   it('aviso de 1h30 pausa e pergunta', async () => {
     const { deps, rec } = makeDeps();
     render(<RecordScreen deps={deps} onDone={vi.fn()} onCancel={vi.fn()} />);
