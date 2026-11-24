@@ -6,28 +6,44 @@ export type AskTurn = { q: string; a: string };
 export type AskSource = { n: number; lessonId: string; title: string; startS: number; quote: string };
 export type AskAnswer = { answer: string; sources: AskSource[] };
 
-/** Teto do material: uma aula de 1h30 tem uns 90 mil caracteres. Segura o pedido dentro da cota grátis. */
-export const MAX_ASK_CHARS = 360_000;
+/**
+ * Teto do material: uma aula de 1h30 tem uns 90 mil caracteres. 200 mil (~55 mil tokens) cabem duas aulas inteiras
+ * e mantêm algumas perguntas seguidas dentro do limite por minuto da cota grátis.
+ */
+export const MAX_ASK_CHARS = 200_000;
 export const MAX_ASK_LESSONS = 8;
 export const MAX_QUESTION_CHARS = 500;
 const MAX_HISTORY = 4;
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', timeZone: 'America/Sao_Paulo' });
 
-/** As aulas como linhas "[A1 12:34] texto". Com muitas aulas, cada uma ganha a mesma fatia do teto. */
+/**
+ * As aulas como linhas "[A1 12:34] texto". Com muitas aulas, cada uma ganha a mesma fatia do teto; se a aula
+ * não couber, vão trechos espaçados do começo ao fim, para nenhuma parte da aula ficar de fora.
+ */
 export function askMaterial(lessons: AskLesson[], cap = MAX_ASK_CHARS): string {
   const budget = Math.floor(cap / Math.max(1, lessons.length));
   return lessons.map((l, i) => {
     const label = `A${i + 1}`;
-    const lines: string[] = [];
-    let used = 0;
-    for (const s of l.segments) {
-      const line = `[${label} ${clock(s.start_s)}] ${s.text}`;
-      if (used + line.length > budget) break;
-      lines.push(line);
-      used += line.length + 1;
+    const all = l.segments.map((s) => `[${label} ${clock(s.start_s)}] ${s.text}`);
+    const size = all.reduce((t, line) => t + line.length + 1, 0);
+    let lines = all;
+    if (size > budget) {
+      const keep = budget / size;
+      lines = [];
+      let used = 0;
+      let acc = 0;
+      for (const line of all) {
+        acc += keep;
+        if (acc < 1) continue;
+        acc -= 1;
+        if (used + line.length + 1 > budget) break;
+        lines.push(line);
+        used += line.length + 1;
+      }
     }
-    return `### ${label}: ${l.title}, ${day(l.recorded_at)}\n${lines.join('\n')}`;
+    const note = lines.length < all.length ? ' (trechos espaçados da aula inteira, não ela toda)' : '';
+    return `### ${label}: ${l.title}, ${day(l.recorded_at)}${note}\n${lines.join('\n')}`;
   }).join('\n\n');
 }
 

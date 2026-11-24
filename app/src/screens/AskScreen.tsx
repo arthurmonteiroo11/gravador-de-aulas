@@ -17,29 +17,39 @@ const SUGGESTIONS = ['Quais foram os pontos principais?', 'O que pode cair na pr
 /** Conversa com as aulas: a resposta vem só do que o professor disse, com o trecho e o tempo de cada fonte. */
 export default function AskScreen({ lessonIds, title, onBack, onOpenSource }: Props) {
   const key = chatKey(lessonIds);
+  // Uma pergunta ainda sem resposta é de uma visita anterior que não esperou: a resposta chega sozinha na memória.
   const [items, setItems] = useState<ChatItem[]>(() => savedChat(key));
+  useEffect(() => {
+    if (!items.some((i) => !i.answer && !i.error)) return;
+    const timer = setInterval(() => setItems(savedChat(key)), 1000);
+    return () => clearInterval(timer);
+  }, [items, key]);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const many = lessonIds.length > 1;
 
-  useEffect(() => saveChat(key, items), [key, items]);
   useEffect(() => {
     if (items.length) end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }, [items.length, busy]);
 
-  const send = async (text: string) => {
+  // A resposta vai direto para a memória da conversa: se a pessoa sair antes dela chegar, ela aparece na volta.
+  const put = (next: ChatItem[]) => {
+    saveChat(key, next);
+    setItems(next);
+  };
+
+  const send = async (text: string, before: ChatItem[] = items) => {
     const q = text.trim().slice(0, MAX_QUESTION_CHARS);
     if (!q || busy) return;
-    const before = items;
     setQuestion('');
     setBusy(true);
-    setItems([...before, { q }]);
+    put([...before, { q }]);
     try {
       const answer = await askLessons(lessonIds, q, historyOf(before));
-      setItems([...before, { q, answer }]);
+      put([...before, { q, answer }]);
     } catch (err) {
-      setItems([...before, { q, error: (err as Error).message }]);
+      put([...before, { q, error: (err as Error).message }]);
     } finally {
       setBusy(false);
     }
@@ -77,7 +87,7 @@ export default function AskScreen({ lessonIds, title, onBack, onOpenSource }: Pr
             ) : item.error ? (
               <div className="bubble-a">
                 <p className="notice" role="alert">{item.error}</p>
-                <button className="ghost small-link" onClick={() => { setItems(items.filter((_, k) => k !== i)); void send(item.q); }} disabled={busy}>
+                <button className="ghost small-link" onClick={() => void send(item.q, items.filter((_, k) => k !== i))} disabled={busy}>
                   Tentar de novo
                 </button>
               </div>

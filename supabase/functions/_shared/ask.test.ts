@@ -51,3 +51,12 @@ Deno.test('fontes: aula certa, tempo ajustado ao trecho e inválidas fora', () =
 Deno.test('resposta vazia não quebra', () => {
   assertEquals(cleanAnswer(null, lessons), { answer: '', sources: [] });
 });
+
+Deno.test('aula grande demais: vão trechos do começo ao fim, com aviso', () => {
+  const long = { ...lessons[0], segments: Array.from({ length: 1000 }, (_, i) => ({ start_s: i * 5, text: 'y'.repeat(90) })) };
+  const m = askMaterial([long], 20_000);
+  assertStringIncludes(m, 'trechos espaçados');
+  const times = [...m.matchAll(/\[A1 ([\d:]+)\]/g)].map((x) => x[1]);
+  assert(times.length > 50);
+  assert(times[times.length - 1] >= '1:20:00', `não chegou ao fim da aula: ${times[times.length - 1]}`);
+});

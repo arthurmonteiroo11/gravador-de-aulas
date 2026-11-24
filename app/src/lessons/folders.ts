@@ -57,11 +57,12 @@ export async function renameFolder(from: string, to: string, folders: string[] =
   if (!n) throw new Error('Dê um nome para a pasta.');
   if (n === from) return;
   if (folderTaken(n, from, folders)) throw new Error(`Já existe uma pasta "${n}". Escolha outro nome.`);
-  await createFolder(n);
+  // Renomeia a linha da pasta no lugar, para os termos irem junto. Pasta que só existia nas aulas ganha uma linha.
+  const renamed = await supabase.from('subjects').update({ name: n }).eq('name', from).select('name');
+  if (renamed.error) throw renamed.error;
+  if (!renamed.data?.length) await createFolder(n);
   const lessons = await supabase.from('lessons').update({ subject: n }).eq('subject', from);
   if (lessons.error) throw lessons.error;
-  const { error } = await supabase.from('subjects').delete().eq('name', from);
-  if (error) throw error;
 }
 
 /** Apaga a pasta. As aulas continuam, só ficam sem matéria. */
