@@ -26,3 +26,6 @@ label { display: block; margin: 12px 0 4px; color: var(--muted); font-size: .9re
 .transcript { list-style: none; padding: 0; margin: 0; }
 .segment { width: 100%; text-align: left; border: 0; border-radius: 8px; padding: 8px; min-height: 0; line-height: 1.45; }
 .segment:active { background: var(--line); }
+.player { display: flex; align-items: center; gap: 8px; width: 100%; }
+.player input[type='range'] { flex: 1; min-width: 0; }
+.player-time { font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--muted, #9ca3af); }

@@ -7,3 +7,14 @@ export function locate(chunks: AudioChunk[], t: number): { idx: number; offset: 
   }
   return null;
 }
+
+/** Duração da aula inteira, pela soma das partes (o iPhone não grava a duração no arquivo). */
+export function lessonLength(chunks: AudioChunk[]): number {
+  return chunks.reduce((end, c) => Math.max(end, c.start_s + c.duration_s), 0);
+}
+
+/** Tempo da aula a partir da parte tocando e do ponto dentro dela. */
+export function lessonTime(chunks: AudioChunk[], idx: number | null, offset: number): number {
+  const c = idx === null ? undefined : chunks.find((x) => x.idx === idx);
+  return c ? c.start_s + (Number.isFinite(offset) ? offset : 0) : 0;
+}

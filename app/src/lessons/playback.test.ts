@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { locate } from './playback';
+import { locate, lessonLength, lessonTime } from './playback';
 
 const chunks = [0, 1, 2].map((idx) => ({ lesson_id: 'l', idx, start_s: idx * 60, duration_s: 60, path: `p/${idx}` }));
 
@@ -17,5 +17,16 @@ describe('locate', () => {
       { lesson_id: 'l', idx: 1, start_s: 30, duration_s: 60, path: 'b' },
     ];
     expect(locate(c, 45)).toEqual({ idx: 1, offset: 15 });
+  });
+});
+
+describe('tempo da aula inteira', () => {
+  it('soma as partes para o total', () => {
+    expect(lessonLength(chunks)).toBe(180);
+    expect(lessonLength([])).toBe(0);
+  });
+  it('converte o ponto dentro da parte em tempo da aula', () => {
+    expect(lessonTime(chunks, 1, 12)).toBe(72);
+    expect(lessonTime(chunks, null, 5)).toBe(0);
   });
 });

@@ -8,7 +8,7 @@ import PipelineStatus from '../components/PipelineStatus';
 import { uploadPending } from '../storage/uploader';
 import { supabase } from '../lib/supabase';
 import { loadLessonContent, signedUrls, type LessonContent } from '../lessons/content';
-import { locate } from '../lessons/playback';
+import { lessonLength, lessonTime, locate } from '../lessons/playback';
 import { formatClock, formatDuration, statusLabel } from '../lessons/format';
 
 type Tab = 'summary' | 'rewrite' | 'transcript';
@@ -38,6 +38,8 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
   };
   const audio = useRef<HTMLAudioElement>(null);
   const playingIdx = useRef<number | null>(null);
+  const [now, setNow] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const done = useRef(false);
 
   useEffect(() => {
@@ -101,6 +103,14 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
     if (next) playChunk(next.idx, 0);
   };
 
+  const togglePlay = () => {
+    const el = audio.current;
+    if (!el) return;
+    if (playingIdx.current === null) return playAt(0);
+    if (el.paused) void el.play();
+    else el.pause();
+  };
+
   if (!lesson || !content) return <p className="muted">Carregando…</p>;
 
   const pendingText = lesson.status === 'error' ? `Erro: ${lesson.error_message ?? 'tente de novo mais tarde.'}` : `${statusLabel(lesson)}…`;
@@ -117,8 +127,34 @@ export default function LessonScreen({ lessonId, onBack }: { lessonId: string; o
         <p className="muted">Áudio apagado após 30 dias.</p>
       ) : (
         <p>
-          <audio ref={audio} controls onEnded={playNext} style={{ width: '100%' }} />
-          {content.chunks.length > 0 && <button onClick={() => playAt(0)}>Ouvir do início</button>}
+          {/* Player próprio: o do iPhone mostra 00:00 porque os arquivos gravados não trazem a duração. */}
+          <audio
+            ref={audio}
+            onEnded={playNext}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onTimeUpdate={(e) => setNow(lessonTime(content.chunks, playingIdx.current, e.currentTarget.currentTime))}
+          />
+          {content.chunks.length > 0 && (
+            <span className="player">
+              <button onClick={togglePlay} aria-label={playing ? 'Pausar áudio' : 'Tocar áudio'}>{playing ? '❚❚' : '▶'}</button>
+              <span className="player-time">{formatClock(now)}</span>
+              <input
+                type="range"
+                aria-label="Posição do áudio"
+                min={0}
+                max={Math.max(1, Math.floor(lessonLength(content.chunks)))}
+                step={1}
+                value={Math.floor(now)}
+                onChange={(e) => {
+                  const t = Number(e.target.value);
+                  setNow(t);
+                  playAt(t);
+                }}
+              />
+              <span className="player-time">{formatClock(lessonLength(content.chunks))}</span>
+            </span>
+          )}
         </p>
       )}
 
