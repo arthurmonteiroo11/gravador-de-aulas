@@ -206,7 +206,14 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
           onReview={() => onReview?.(lesson.id, lesson.title)}
           onPrint={() => onPrint?.(lesson.id)}
           onAsk={() => (wide ? setSide('ask') : onAsk?.(lesson.id, lesson.title))}
-          onChanged={(patch) => setLesson((l) => l && { ...l, ...patch })}
+          onChanged={(patch) => {
+            setLesson((l) => l && { ...l, ...patch });
+            // Transcrever de novo: volta a acompanhar a aula até ela ficar pronta, e mostra o texto novo.
+            if (patch.status === 'processing') {
+              done.current = false;
+              setReload((n) => n + 1);
+            }
+          }}
           onDeleted={() => (onDeleted ?? onBack)()}
         />
       </div>
@@ -294,9 +301,13 @@ export default function LessonScreen({ lessonId, onBack, focus, folders = [], on
         )}
       </Panel>
       <Panel tab="transcript" active={shownTab}>
-        {manySpeakers(content.segments) && (
+        {speakerList(content.segments).length > 0 && (
           <div className="speakers-bar">
-            <span className="muted">{speakerList(content.segments).map((l) => speakerName(l, lesson.speaker_names ?? {})).join(', ')}</span>
+            <span className="muted">
+              {manySpeakers(content.segments)
+                ? speakerList(content.segments).map((l) => speakerName(l, lesson.speaker_names ?? {})).join(', ')
+                : `Só uma voz identificada: ${speakerName(speakerList(content.segments)[0], lesson.speaker_names ?? {})}`}
+            </span>
             <button className="pill" onClick={() => setNamingSpeakers(true)}><Icon name="person" size={16} />Nomes</button>
           </div>
         )}

@@ -15,7 +15,7 @@ import Icon from '../components/Icon';
 import ThemeButton from '../components/ThemeButton';
 import Sheet from '../components/Sheet';
 import ExamCard from '../components/ExamCard';
-import { combineLessons, listStudyNotes, type StudyNote } from '../lessons/study';
+import { combineLessons, deleteStudyNote, listStudyNotes, type StudyNote } from '../lessons/study';
 
 export type OpenFocus = { query?: string; startS?: number | null; tab?: 'summary' | 'rewrite' | 'transcript' | 'notes' };
 type Props = {
@@ -163,19 +163,28 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
   // Só contam as escolhidas que estão à vista (a busca ou o filtro podem esconder alguma).
   const chosen = picked ? shown.filter((l) => picked.has(l.id) && l.status === 'ready').map((l) => l.id) : [];
   const toDelete = picked ? shown.filter((l) => picked.has(l.id)) : [];
+  const notesToDelete = picked ? shownStudies.filter((n) => picked.has(n.id)) : [];
+  const deleteCount = toDelete.length + notesToDelete.length;
+  const deleteWhat = countLabel(toDelete.length, notesToDelete.length);
   const busySelecting = combining || deleting !== null;
 
   const removeChosen = async () => {
     setDeleting(0);
     setError(null);
-    const failed = await deleteLessons(toDelete, (n) => alive.current && setDeleting(n));
+    const failed: string[] = [];
+    for (const [i, n] of notesToDelete.entries()) {
+      if (alive.current) setDeleting(i);
+      await deleteStudyNote(n.id).catch(() => failed.push(n.id));
+    }
+    failed.push(...await deleteLessons(toDelete, (n) => alive.current && setDeleting(notesToDelete.length + n)));
     if (!alive.current) return;
     setDeleting(null);
     setConfirmDelete(false);
     void refresh();
+    setStudies((list) => list.filter((n) => !notesToDelete.some((d) => d.id === n.id) || failed.includes(n.id)));
     if (failed.length) {
       setPicked(new Set(failed));
-      setError(`Não deu para excluir ${failed.length === 1 ? '1 aula' : `${failed.length} aulas`}. Verifique a internet e tente de novo.`);
+      setError(`Não deu para excluir ${failed.length === 1 ? '1 item' : `${failed.length} itens`}. Verifique a internet e tente de novo.`);
     } else setPicked(null);
   };
   const requestKey = useRef<{ ids: string; key: string } | null>(null);
@@ -247,11 +256,11 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
             <Icon name="person" size={17} />
           </button>
         )}
-        {(lessons ?? []).length > 0 && !picked && (
+        {((lessons ?? []).length > 0 || studies.length > 0) && !picked && (
           <button className="ghost" onClick={() => setPicked(new Set())}>Selecionar</button>
         )}
       </div>
-      {picked && <p className="subtitle">Escolha aulas para juntar num resumo só, organizado por tema, ou para excluir.</p>}
+      {picked && <p className="subtitle">Escolha aulas para juntar num resumo só, organizado por tema, ou aulas e resumos para excluir.</p>}
 
       <div className="search">
         <Icon name="search" size={18} />
@@ -337,13 +346,20 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
           </>
         )}
 
-        {!picked && shownStudies.length > 0 && (
+        {shownStudies.length > 0 && (
           <>
             <p className="section-label">Resumos combinados</p>
             <ul className="lesson-list">
               {shownStudies.map((n) => (
                 <li key={n.id}>
-                  <button className="lesson-row study-row" onClick={() => onOpenStudy(n.id)}>
+                  <button
+                    className="lesson-row study-row"
+                    onClick={() => (picked ? toggle(n.id) : onOpenStudy(n.id))}
+                    data-selectable={picked ? 'true' : undefined}
+                    aria-pressed={picked ? picked.has(n.id) : undefined}
+                    disabled={busySelecting}
+                  >
+                    {picked && <span className="check"><Icon name="check" size={16} /></span>}
                     <span className="lesson-title"><Highlight text={n.title} query={query} /></span>
                     <span className="lesson-meta">
                       <span className="stack"><Icon name="stack" size={15} />{n.lesson_ids.length} aulas</span>
@@ -406,8 +422,8 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
       {picked ? (
         <div className="select-bar">
           <button className="ghost" onClick={() => { setPicked(null); setError(null); }} disabled={busySelecting}>Cancelar</button>
-          <button className="ghost danger-text" onClick={() => setConfirmDelete(true)} disabled={!toDelete.length || busySelecting} aria-label={toDelete.length ? `Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}` : 'Excluir'}>
-            <Icon name="trash" size={18} />{toDelete.length > 0 && toDelete.length}
+          <button className="ghost danger-text" onClick={() => setConfirmDelete(true)} disabled={!deleteCount || busySelecting} aria-label={deleteCount ? `Excluir ${deleteWhat}` : 'Excluir'}>
+            <Icon name="trash" size={18} />{deleteCount > 0 && deleteCount}
           </button>
           <button className="primary" onClick={() => void combine()} disabled={chosen.length < 2 || busySelecting} aria-busy={combining}>
             {combining ? 'Juntando… até 1 min' : chosen.length < 2 ? 'Juntar: 2 ou mais' : `Juntar ${chosen.length} aulas`}
@@ -426,21 +442,33 @@ export default function LessonsScreen({ onRecord, onOpen, onSubjects, onOpenStud
           </button>
         </div>
       )}
-      {confirmDelete && toDelete.length > 0 && (
-        <Sheet title={`Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}?`} titleId="delete-many-title" onClose={() => deleting === null && setConfirmDelete(false)}>
+      {confirmDelete && deleteCount > 0 && (
+        <Sheet title={`Excluir ${deleteWhat}?`} titleId="delete-many-title" onClose={() => deleting === null && setConfirmDelete(false)}>
           <ul className="delete-list">
-            {toDelete.slice(0, 6).map((l) => <li key={l.id}>{l.title}</li>)}
-            {toDelete.length > 6 && <li className="muted">e mais {toDelete.length - 6}</li>}
+            {[...notesToDelete.map((n) => ({ id: n.id, title: `Resumo: ${n.title}` })), ...toDelete].slice(0, 6).map((l) => <li key={l.id}>{l.title}</li>)}
+            {deleteCount > 6 && <li className="muted">e mais {deleteCount - 6}</li>}
           </ul>
-          <p className="muted hint sheet-lead">Apaga o áudio, a transcrição, os textos, as anotações e os flashcards. Não dá para desfazer.</p>
+          <p className="muted hint sheet-lead">
+            {toDelete.length ? 'Apaga o áudio, a transcrição, os textos, as anotações e os flashcards das aulas. ' : ''}
+            {notesToDelete.length && !toDelete.length ? 'As aulas usadas nos resumos continuam. ' : ''}Não dá para desfazer.
+          </p>
           <div className="actions">
             <button className="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting !== null}>Cancelar</button>
             <button className="danger grow" onClick={() => void removeChosen()} disabled={deleting !== null}>
-              {deleting !== null ? `Excluindo ${Math.min(deleting + 1, toDelete.length)} de ${toDelete.length}…` : `Excluir ${toDelete.length} ${toDelete.length === 1 ? 'aula' : 'aulas'}`}
+              {deleting !== null ? `Excluindo ${Math.min(deleting + 1, deleteCount)} de ${deleteCount}…` : `Excluir ${deleteWhat}`}
             </button>
           </div>
         </Sheet>
       )}
     </section>
   );
+}
+
+/** "2 aulas e 1 resumo", "1 aula", "3 resumos". */
+export function countLabel(lessons: number, notes: number): string {
+  const parts = [
+    lessons ? `${lessons} ${lessons === 1 ? 'aula' : 'aulas'}` : '',
+    notes ? `${notes} ${notes === 1 ? 'resumo' : 'resumos'}` : '',
+  ].filter(Boolean);
+  return parts.join(' e ');
 }
